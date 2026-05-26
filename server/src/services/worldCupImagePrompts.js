@@ -162,33 +162,37 @@ Acabamento: fundo 100% transparente, canal alfa real, sem cenario externo.
 function buildMainCardPrompt(params = {}) {
   const participantName = cleanParam(params.participantName, 'Participante');
   const country = cleanParam(params.country, 'Brasil');
-  const jerseyNumber = cleanParam(params.jerseyNumber, '10');
+  const jerseyNumber = cleanParam(params.jerseyNumber, '');
   const position = cleanParam(params.position, 'Craque da torcida');
   const personality = cleanParam(params.personality, 'confiante, alegre e carismatico');
   const extraDetails = cleanParam(params.extraDetails, '');
+  const jerseyInstruction = jerseyNumber
+    ? `A camiseta deve ter o numero ${jerseyNumber} exatamente uma unica vez, grande e centralizado no peito. Nao desenhe um segundo numero ${jerseyNumber}, nao desenhe numero pequeno no ombro ou no lado direito do peito, nao repita o numero em nenhuma outra area da camiseta e nao coloque outros numeros.`
+    : 'Nao inclua nenhum numero na camiseta. A camiseta deve permanecer lisa/generica, sem numero no peito, ombro, manga, costas ou qualquer outra area.';
+  const jerseyParameter = jerseyNumber || 'nenhum; nao renderizar numero na camiseta';
 
   return `
 Analise a imagem fornecida e crie uma imagem recortada do participante para ser usada em uma composicao programatica de figurinha.
 
 Formato e finalidade: pessoa isolada em PNG com canal alfa real, proporcao vertical, em plano medio, mostrando da camiseta para cima: cabeca, ombros, peito, parte superior da camiseta e bracos quando couber naturalmente. Nao gere corpo inteiro, pernas, joelhos ou sapatos. A pose deve ser heroica de figurinha de futebol, pronta para ser aplicada sobre um fundo e uma moldura via composicao com Sharp.
 
-Enquadramento obrigatorio: use plano medio de retrato esportivo, cortando abaixo do peito ou no maximo ate a cintura, com a camiseta e o numero bem visiveis. A pessoa deve ocupar o centro do recorte sem parecer distante.
+Enquadramento obrigatorio: use plano medio de retrato esportivo, cortando abaixo do peito ou no maximo ate a cintura, com a camiseta bem visivel. A pessoa deve ocupar o centro do recorte sem parecer distante.
 
 Pose obrigatoria do participante: o corpo deve estar quase de frente para a camera, com leve rotacao diagonal natural. O ombro direito da pessoa deve ficar sutilmente mais projetado para frente em direcao a camera, enquanto o ombro esquerdo recua um pouco. Os bracos devem estar firmemente cruzados sobre o peito, transmitindo confianca, seguranca e prontidao. A mao direita deve estar claramente visivel, repousando de forma firme sobre o braco ou biceps esquerdo. O braco esquerdo deve estar dobrado e encaixado por baixo do braco direito, com a mao esquerda oculta. A cabeca deve ficar reta e alinhada com o corpo, com o rosto virado diretamente para frente, contato visual direto com a camera e um leve sorriso contido. Os ombros devem ficar relaxados, mas estruturados para dar suporte a pose dos bracos cruzados, sem tensao no pescoco.
 
-Integridade do recorte: dentro do plano medio definido, nao corte nenhuma parte visivel da pessoa. Cabeca, cabelo, rosto, pescoco, ombros, bracos cruzados, mao direita visivel, peito, camiseta e numero devem ficar inteiros dentro da area da imagem, com margem transparente suficiente ao redor para composicao no card. Nao deixe dedos, cotovelos, ombros, topo da cabeca ou laterais dos bracos sairem para fora do canvas.
+Integridade do recorte: dentro do plano medio definido, nao corte nenhuma parte visivel da pessoa. Cabeca, cabelo, rosto, pescoco, ombros, bracos cruzados, mao direita visivel, peito e camiseta devem ficar inteiros dentro da area da imagem, com margem transparente suficiente ao redor para composicao no card. Nao deixe dedos, cotovelos, ombros, topo da cabeca ou laterais dos bracos sairem para fora do canvas.
 
 Prioridade maxima: a semelhanca com a pessoa da foto original e mais importante que qualquer embelezamento, pose heroica ou estilo esportivo. Nao mude idade aparente, formato do rosto, proporcoes faciais, tom de pele, nariz, boca, olhos, sobrancelhas, sorriso, covinhas, cabelo, linha do cabelo, barba ou expressao-base. Nao afine, arredonde, simetrize, rejuveneca, envelheca ou transforme o rosto em outra pessoa.
 
 Guardrails de identidade: preserve fielmente semelhanca facial, etnia, formato do rosto, cabelo, barba, expressao-base e aderecos reconheciveis da foto original. Acessorios existentes devem manter estilo, material, cor, formato, tamanho e posicao com maxima fidelidade: brincos, aneis, pulseiras, relogios, colares, piercings, presilhas, bone, chapeu e oculos reais nao podem ser redesenhados em outro estilo, trocados por versoes genericas, removidos ou recoloridos. Nao adicione acessorios que nao existam na foto original. Se a pessoa nao usa oculos na foto original, nao desenhe oculos. Se a pessoa nao usa bone, chapeu, brincos, colar, relogio, pulseira ou qualquer outro acessorio na foto original, nao invente esses itens. Se houver oculos de grau com armacao amarela e preta, preserve exatamente o design e as cores da armacao.
 
-Roupa obrigatoria: a pessoa deve aparecer vestindo uma camiseta de jogo do Brasil generica, preferencialmente amarela com detalhes verdes e acabamento esportivo moderno. A camiseta deve ter o numero ${jerseyNumber} exatamente uma unica vez, grande e centralizado no peito. Nao desenhe um segundo numero ${jerseyNumber}, nao desenhe numero pequeno no ombro ou no lado direito do peito, nao repita o numero em nenhuma outra area da camiseta e nao coloque outros numeros.
+Roupa obrigatoria: a pessoa deve aparecer vestindo uma camiseta de jogo do Brasil generica, preferencialmente amarela com detalhes verdes e acabamento esportivo moderno. ${jerseyInstruction}
 
-Marcas proibidas na camiseta: nao use escudos oficiais, marcas registradas, logos reais, patrocinadores ou simbolos de fabricante. E proibido desenhar Nike, swoosh, check mark, virgula, adidas, Puma, CBF ou qualquer marca parecida. A camisa deve ser lisa/generica, reconhecivel apenas pelas cores do Brasil e pelo unico numero ${jerseyNumber}.
+Marcas proibidas na camiseta: nao use escudos oficiais, marcas registradas, logos reais, patrocinadores, simbolos de fabricante, emblemas, marcas esportivas ou qualquer grafico que pareca logotipo. E proibido desenhar Nike, swoosh, check mark, virgula, adidas, Puma, CBF, escudo, estrela, brasao ou qualquer marca parecida. A camisa deve ser lisa/generica, reconhecivel apenas pelas cores do Brasil${jerseyNumber ? ` e pelo unico numero ${jerseyNumber}` : ', sem numero e sem logotipo'}.
 
 Parametros de direcao:
 - Nome do participante para identidade: ${participantName}
-- Numero da camisa: ${jerseyNumber}
+- Numero da camisa: ${jerseyParameter}
 - Posicao/persona: ${position}
 - Pais/torcida: ${country}
 - Personalidade visual: ${personality}
@@ -198,7 +202,7 @@ Direcao de arte: hiper-realista e fotografica, como uma foto editorial esportiva
 
 Anatomia: se as maos aparecerem, cada mao humana deve ter exatamente cinco dedos no total, sem sexto dedo, sem dedos duplicados, sem dedos fundidos e sem deformacoes.
 
-Nao inclua fundo, cenario, moldura, logos, marcas, texto solto, nome escrito, sombra projetada, objetos de card ou acessorios inventados. Nao inclua marca na roupa e nao repita o numero da camiseta. O fundo deve ser 100% transparente com alfa real. Nao desenhe padrao quadriculado, xadrez, grid cinza/branco ou qualquer simulacao visual de transparencia.
+Nao inclua fundo, cenario, moldura, logos, marcas, texto solto, nome escrito, sombra projetada, objetos de card ou acessorios inventados. Nao inclua marca na roupa${jerseyNumber ? ' e nao repita o numero da camiseta' : ', numero ou qualquer texto na camiseta'}. O fundo deve ser 100% transparente com alfa real. Nao desenhe padrao quadriculado, xadrez, grid cinza/branco ou qualquer simulacao visual de transparencia.
 `.trim();
 }
 
@@ -219,7 +223,10 @@ function getImageSpecSummaries() {
 
 function buildPromptForSpec(spec, params) {
   const prompt = spec.buildPrompt ? spec.buildPrompt(params) : spec.prompt;
-  const jerseyNumber = cleanParam(params.jerseyNumber, '10');
+  const jerseyNumber = cleanParam(params.jerseyNumber, '');
+  const jerseyNumberRule = jerseyNumber
+    ? `Numero da camiseta: se a referencia exibir um numero na camiseta, preserve exatamente o mesmo numero em todas as figurinhas secundarias. Para esta geracao, o numero esperado e ${jerseyNumber}; mantenha esse numero visivel, grande e legivel na camiseta sempre que o torso aparecer. Organize pose, maos, objetos e texto para nao cobrir completamente o numero. Nao remova, nao esconda, nao substitua, nao altere, nao duplique e nao mova o numero para ombro, manga ou outra area.`
+    : 'Numero da camiseta: o formulario nao definiu numero. Se a referencia nao exibir numero na camiseta, nao invente numero algum nas figurinhas secundarias. A camiseta deve permanecer sem numero, sem texto e sem logotipo. Se por acaso a referencia ja exibir um numero real na camiseta, preserve exatamente esse numero sem duplicar.';
 
   if (spec.kind !== 'sticker') {
     return prompt;
@@ -234,7 +241,7 @@ Guardrails globais: preserve a identidade facial, etnia, formato do rosto, propo
 
 Regra de oculos: qualquer mencao a preservar oculos nos prompts especificos e estritamente condicional a referencia mostrar oculos reais no rosto. Se a referencia nao mostrar oculos claramente, assuma que a pessoa nao usa oculos, ignore qualquer preservacao de oculos e mantenha rosto, olhos e sobrancelhas sem armacao ou lentes. A unica excecao para criar oculos novos e a figurinha "O Hexa Vem".
 
-Numero da camiseta: se a referencia exibir um numero na camiseta, preserve exatamente o mesmo numero em todas as figurinhas secundarias. Para esta geracao, o numero esperado e ${jerseyNumber}; mantenha esse numero visivel, grande e legivel na camiseta sempre que o torso aparecer. Organize pose, maos, objetos e texto para nao cobrir completamente o numero. Nao remova, nao esconda, nao substitua, nao altere, nao duplique e nao mova o numero para ombro, manga ou outra area.
+${jerseyNumberRule}
 
 Anatomia global das maos: sempre que as maos aparecerem, a mao esquerda e a mao direita devem ter exatamente cinco dedos no total cada uma, nunca seis; sem dedos extras, sem dedos duplicados, sem dedos fundidos, sem dedos repetidos e sem palmas deformadas. Se houver gesto com dedos destacados, mantenha os dedos restantes recolhidos naturalmente ou parcialmente escondidos atras da palma, sem inventar dedos adicionais.
 

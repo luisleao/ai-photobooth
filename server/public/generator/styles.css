@@ -472,6 +472,13 @@ h2 {
   gap: 12px;
 }
 
+.results-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .results-grid {
   display: grid;
   gap: 10px;
@@ -662,6 +669,20 @@ h2 {
   }
 
   .composition-actions .button {
+    flex: 1;
+  }
+
+  .results-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .results-actions {
+    justify-content: stretch;
+  }
+
+  .results-actions .button,
+  .results-actions .status-pill {
     flex: 1;
   }
 }

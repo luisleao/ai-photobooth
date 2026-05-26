@@ -16,6 +16,7 @@ const {
 const {
   MAIN_PRINT_SIZE,
   SMALL_WEBP_SIZE,
+  clearGeneratedImages,
   generateWorldCupImage,
   generateWorldCupImages,
   getImageGenerationStatus,
@@ -102,6 +103,18 @@ app.get('/api/photobooth/main-composition', (req, res) => {
 
 app.get('/api/photobooth/main-card-background', sendMainCardAsset('background'));
 app.get('/api/photobooth/main-card-overlay', sendMainCardAsset('overlay'));
+
+app.post('/api/photobooth/generated/clear', async (req, res, next) => {
+  try {
+    const result = await clearGeneratedImages();
+    res.json({
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.post('/api/photobooth/generate-images', upload.single('sourceImage'), async (req, res, next) => {
   try {

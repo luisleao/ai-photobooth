@@ -165,6 +165,23 @@ async function generateWorldCupImage({
   };
 }
 
+async function clearGeneratedImages() {
+  await fs.mkdir(GENERATED_ROOT, { recursive: true });
+
+  const entries = await fs.readdir(GENERATED_ROOT);
+  await Promise.all(entries.map((entry) => (
+    fs.rm(path.join(GENERATED_ROOT, entry), {
+      recursive: true,
+      force: true,
+    })
+  )));
+
+  return {
+    deletedEntries: entries.length,
+    generatedDir: path.relative(PROJECT_ROOT, GENERATED_ROOT),
+  };
+}
+
 async function saveSourceImagesIfNeeded({
   outputDir,
   sourceBuffer,
@@ -613,7 +630,9 @@ async function generateWithOpenAI({
       'Do not draw, simulate, or include a checkerboard/checkered transparency preview pattern.',
       'Do not include any background, backdrop, card frame, border, logo, watermark, or extra text.',
       'Do not include Nike, swoosh marks, check marks, manufacturer logos, team crests, sponsor logos, or any brand-like symbol on clothing.',
+      'The shirt must not contain any logo-like symbol. The only allowed graphic on the shirt is the exact jersey number when the prompt explicitly requests one.',
       'If a jersey number is requested, show that number exactly once on the shirt; do not duplicate it on the shoulder, chest, sleeve, or any other area.',
+      'If the prompt does not explicitly request a jersey number, do not add any number, digits, letters, or text to the shirt.',
       'For sticker variants, if the source shirt includes a jersey number, preserve that same number visibly on the shirt; do not remove, hide, change, relocate, or duplicate it.',
       'Do not add wearable accessories such as glasses, sunglasses, hats, jewelry, watches, or bracelets unless they are clearly visible in the source image or explicitly required by the prompt.',
       'If glasses are not clearly visible on the source face, assume the person does not wear glasses; keep the face without glasses and do not add frames or lenses to any sticker except the specific sticker titled "O Hexa Vem".',
@@ -968,6 +987,7 @@ module.exports = {
   MAX_SOURCE_IMAGE_BYTES,
   generateWorldCupImages,
   generateWorldCupImage,
+  clearGeneratedImages,
   getImageSpecSummaries,
   getImageGenerationStatus,
   getMainCompositionAssetPath,

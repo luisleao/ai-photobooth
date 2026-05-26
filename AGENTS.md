@@ -60,6 +60,8 @@ A etapa de IA usa a Images API com `images.edit` e a imagem enviada como referen
 
 A interface `/generator/` permite escolher entre upload de arquivo ou captura pela webcam. Ela mantem a lista vazia ate o clique em gerar; depois monta os onze itens com loader e um item separado no fim para o `sticker-sheet`, gera primeiro o recorte principal com camiseta de jogo do Brasil, compoe a figurinha `10x15` com `sharp` e usa uma versao reduzida desse recorte como imagem de referencia para disparar as outras dez imagens em paralelo. A imagem base e reduzida para JPEG com lado maximo configuravel antes de ser enviada ao provider de IA, diminuindo o custo de tokens de imagem; os padroes atuais sao `OPENAI_SOURCE_IMAGE_MAX_SIZE=1024` e `OPENAI_SOURCE_IMAGE_QUALITY=82`.
 
+A interface tambem possui um botao para limpar `/server/public/generated`, acionando a mesma rotina disponivel pelo script `npm run generated:clear`.
+
 As figurinhas secundarias devem manter a mesma linguagem visual entre si: caricatura 3D expressiva no mesmo pacote visual de `O Grito de Gol` e `O Sufoco dos Penaltis`. As figurinhas `Hexa` e `GOOOOOOOL` pedem os textos `HEXAAAAA` e `GOOOOOOOL` diretamente na geracao, sem camada programatica extra para evitar duplicacao. A folha `3.5x6` inclui apenas `O Grito de Gol`, `O Sufoco dos Penaltis`, `Pedindo o VAR`, `O Hexa Vem`, `Cartao Vermelho`, `Hexa`, `GOOOOOOOL` e `Tristeza Pos-Jogo`.
 
 Os prompts nao devem adicionar acessorios que nao existam na foto original, exceto quando a figurinha pedir isso explicitamente, como o oculos tipografico de `O Hexa Vem`. Mencoes a preservar oculos sao sempre condicionais: se a imagem principal nao tiver oculos, nenhuma figurinha deve inventar oculos, com excecao de `O Hexa Vem`. A figurinha `Hexa` nao deve inventar oculos tematico ou oculos com texto.
@@ -69,6 +71,7 @@ Em `O Hexa Vem`, o oculos tipografico deve ter exatamente a palavra `HEXA`, sem 
 Quando a foto original tiver acessorios reais, eles devem manter estilo, material, cor, formato, tamanho e posicao. A fidelidade do rosto tem prioridade sobre embelezamento, pose ou estilo: nao alterar idade aparente, proporcoes faciais, tom de pele, nariz, boca, olhos, sobrancelhas, sorriso, cabelo ou caracteristicas unicas.
 
 Quando a imagem principal exibir numero na camiseta, as figurinhas secundarias devem preservar o mesmo numero visivel na camiseta, sem remover, trocar, esconder, mover ou duplicar.
+Quando o campo de numero estiver vazio, a imagem principal e as figurinhas secundarias nao devem inventar nenhum numero na camiseta.
 
 Os parametros de composicao da figurinha principal podem vir da interface ou do ambiente. A interface `/generator/` tambem permite ajustar visualmente a area da pessoa com arraste e handles de redimensionamento, salvando a configuracao no `localStorage` do navegador para as proximas geracoes.
 
@@ -92,6 +95,7 @@ No prototipo atual, o PDF de calibragem usa apenas frames sinteticos A/B. As fot
 - `npm start`: inicia o servidor Express.
 - `npm run dev`: inicia o servidor Express em modo local.
 - `npm run printer`: inicia o monitor local da fila de impressao.
+- `npm run generated:clear`: limpa `/server/public/generated`.
 - `npm run check`: valida sintaxe dos arquivos principais do servidor.
 
 ## Convencoes

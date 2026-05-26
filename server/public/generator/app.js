@@ -14,6 +14,7 @@ const generateButton = document.querySelector('#generateButton');
 const statusPill = document.querySelector('#statusPill');
 const resultsGrid = document.querySelector('#resultsGrid');
 const message = document.querySelector('#message');
+const clearGeneratedButton = document.querySelector('#clearGeneratedButton');
 const compositionStage = document.querySelector('#compositionStage');
 const compositionBackground = document.querySelector('#compositionBackground');
 const compositionOverlay = document.querySelector('#compositionOverlay');
@@ -35,6 +36,7 @@ const STICKER_SHEET_ID = 'sticker-sheet-3-5x6';
 const MAIN_PRINT_WIDTH = 1181;
 const MAIN_PRINT_HEIGHT = 1772;
 const MIN_SUBJECT_SIZE = 100;
+const SUBJECT_ASPECT_RATIO = 2 / 3;
 const SAVED_COMPOSITION_KEY = 'ai-photobooth.main-composition';
 const STICKER_SHEET_SPEC = {
   id: STICKER_SHEET_ID,
@@ -98,6 +100,7 @@ sourceInput.addEventListener('change', () => {
 openCameraButton.addEventListener('click', startCamera);
 captureCameraButton.addEventListener('click', captureCameraPhoto);
 stopCameraButton.addEventListener('click', stopCamera);
+clearGeneratedButton.addEventListener('click', clearGeneratedImages);
 saveCompositionButton.addEventListener('click', saveCompositionSettings);
 resetCompositionButton.addEventListener('click', resetCompositionSettings);
 compositionSubjectBox.addEventListener('pointerdown', startCompositionDrag);
@@ -108,7 +111,7 @@ Object.values(compositionInputs).forEach((input) => {
       return;
     }
 
-    syncCompositionFromInputs();
+    syncCompositionFromInputs(input.name);
   });
 });
 window.addEventListener('resize', syncCompositionFromInputs);
@@ -498,6 +501,38 @@ function resetCompositionSettings() {
   setMessage('Ajuste visual restaurado para os valores do .env.');
 }
 
+async function clearGeneratedImages() {
+  if (state.isGenerating) {
+    return;
+  }
+
+  clearGeneratedButton.disabled = true;
+  statusPill.textContent = 'Limpando';
+  setMessage('Limpando imagens geradas.');
+
+  try {
+    const response = await fetch('/api/photobooth/generated/clear', {
+      method: 'POST',
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Falha ao limpar imagens geradas.');
+    }
+
+    state.runId = '';
+    resultsGrid.innerHTML = '';
+    clearCompositionSubjectImage();
+    statusPill.textContent = 'Pronto';
+    setMessage(`Pasta generated limpa. ${data.deletedEntries || 0} item(ns) removido(s).`);
+  } catch (error) {
+    statusPill.textContent = 'Erro';
+    setMessage(error.message || 'Falha ao limpar imagens geradas.');
+  } finally {
+    clearGeneratedButton.disabled = false;
+  }
+}
+
 function readCompositionInputs() {
   return normalizeComposition({
     background: compositionInputs.background.value,
@@ -506,12 +541,31 @@ function readCompositionInputs() {
     imageWidth: compositionInputs.imageWidth.value,
     imageHeight: compositionInputs.imageHeight.value,
     imageFit: compositionInputs.imageFit.value,
-  });
+  }, getCompositionBasis());
 }
 
-function normalizeComposition(value = {}) {
-  const imageWidth = clamp(readNumber(value.imageWidth, state.mainCompositionDefaults.imageWidth || 990), MIN_SUBJECT_SIZE, MAIN_PRINT_WIDTH);
-  const imageHeight = clamp(readNumber(value.imageHeight, state.mainCompositionDefaults.imageHeight || 1485), MIN_SUBJECT_SIZE, MAIN_PRINT_HEIGHT);
+function normalizeComposition(value = {}, basis = 'width') {
+  let imageWidth = readNumber(value.imageWidth, state.mainCompositionDefaults.imageWidth || 990);
+  let imageHeight = readNumber(value.imageHeight, state.mainCompositionDefaults.imageHeight || 1485);
+
+  if (basis === 'height') {
+    imageHeight = clamp(imageHeight, Math.round(MIN_SUBJECT_SIZE / SUBJECT_ASPECT_RATIO), MAIN_PRINT_HEIGHT);
+    imageWidth = Math.round(imageHeight * SUBJECT_ASPECT_RATIO);
+  } else {
+    imageWidth = clamp(imageWidth, MIN_SUBJECT_SIZE, MAIN_PRINT_WIDTH);
+    imageHeight = Math.round(imageWidth / SUBJECT_ASPECT_RATIO);
+  }
+
+  if (imageHeight > MAIN_PRINT_HEIGHT) {
+    imageHeight = MAIN_PRINT_HEIGHT;
+    imageWidth = Math.round(imageHeight * SUBJECT_ASPECT_RATIO);
+  }
+
+  if (imageWidth > MAIN_PRINT_WIDTH) {
+    imageWidth = MAIN_PRINT_WIDTH;
+    imageHeight = Math.round(imageWidth / SUBJECT_ASPECT_RATIO);
+  }
+
   const imageLeft = clamp(readNumber(value.imageLeft, state.mainCompositionDefaults.imageLeft || 90), 0, MAIN_PRINT_WIDTH - imageWidth);
   const imageTop = clamp(readNumber(value.imageTop, state.mainCompositionDefaults.imageTop || 82), 0, MAIN_PRINT_HEIGHT - imageHeight);
   const imageFit = ['contain', 'cover', 'fill'].includes(value.imageFit) ? value.imageFit : 'contain';
@@ -524,6 +578,10 @@ function normalizeComposition(value = {}) {
     imageHeight,
     imageFit,
   };
+}
+
+function getCompositionBasis(inputName = '') {
+  return inputName === 'mainImageHeight' ? 'height' : 'width';
 }
 
 function readNumber(value, fallback) {
@@ -547,8 +605,16 @@ function applyCompositionToInputs(layout) {
   updateSubjectFit();
 }
 
-function syncCompositionFromInputs() {
-  applyCompositionToInputs(readCompositionInputs());
+function syncCompositionFromInputs(inputName = '') {
+  const data = new FormData(form);
+  applyCompositionToInputs(normalizeComposition({
+    background: data.get('mainBackground'),
+    imageLeft: data.get('mainImageLeft'),
+    imageTop: data.get('mainImageTop'),
+    imageWidth: data.get('mainImageWidth'),
+    imageHeight: data.get('mainImageHeight'),
+    imageFit: data.get('mainImageFit'),
+  }, getCompositionBasis(inputName)));
 }
 
 function renderCompositionBox(layout = readCompositionInputs()) {
@@ -635,26 +701,52 @@ function resizeComposition(layout, handle, dx, dy) {
 
   const right = layout.imageLeft + layout.imageWidth;
   const bottom = layout.imageTop + layout.imageHeight;
+  const centerX = layout.imageLeft + layout.imageWidth / 2;
+  const centerY = layout.imageTop + layout.imageHeight / 2;
+  const isEast = handle.includes('e');
+  const isWest = handle.includes('w');
+  const isSouth = handle.includes('s');
+  const isNorth = handle.includes('n');
+  const horizontalDelta = isEast ? dx : isWest ? -dx : 0;
+  const verticalDelta = isSouth ? dy : isNorth ? -dy : 0;
+  const widthFromHorizontal = layout.imageWidth + horizontalDelta;
+  const heightFromVertical = layout.imageHeight + verticalDelta;
+  const horizontalScale = Math.abs(horizontalDelta / layout.imageWidth);
+  const verticalScale = Math.abs(verticalDelta / layout.imageHeight);
 
-  if (handle.includes('e')) {
-    next.imageWidth = clamp(layout.imageWidth + dx, MIN_SUBJECT_SIZE, MAIN_PRINT_WIDTH - layout.imageLeft);
+  if ((isEast || isWest) && (!isNorth && !isSouth || horizontalScale >= verticalScale)) {
+    next.imageWidth = widthFromHorizontal;
+    next.imageHeight = Math.round(widthFromHorizontal / SUBJECT_ASPECT_RATIO);
+  } else {
+    next.imageHeight = heightFromVertical;
+    next.imageWidth = Math.round(heightFromVertical * SUBJECT_ASPECT_RATIO);
   }
 
-  if (handle.includes('s')) {
-    next.imageHeight = clamp(layout.imageHeight + dy, MIN_SUBJECT_SIZE, MAIN_PRINT_HEIGHT - layout.imageTop);
+  if (isEast && !isWest) {
+    next.imageLeft = layout.imageLeft;
+  } else if (isWest && !isEast) {
+    next.imageLeft = right - next.imageWidth;
+  } else {
+    next.imageLeft = centerX - next.imageWidth / 2;
   }
 
-  if (handle.includes('w')) {
-    next.imageLeft = clamp(layout.imageLeft + dx, 0, right - MIN_SUBJECT_SIZE);
-    next.imageWidth = right - next.imageLeft;
+  if (isSouth && !isNorth) {
+    next.imageTop = layout.imageTop;
+  } else if (isNorth && !isSouth) {
+    next.imageTop = bottom - next.imageHeight;
+  } else {
+    next.imageTop = centerY - next.imageHeight / 2;
   }
 
-  if (handle.includes('n')) {
-    next.imageTop = clamp(layout.imageTop + dy, 0, bottom - MIN_SUBJECT_SIZE);
-    next.imageHeight = bottom - next.imageTop;
+  if ((handle === 'e') || (handle === 'w')) {
+    next.imageTop = centerY - next.imageHeight / 2;
   }
 
-  return normalizeComposition(next);
+  if ((handle === 'n') || (handle === 's')) {
+    next.imageLeft = centerX - next.imageWidth / 2;
+  }
+
+  return normalizeComposition(next, Math.abs(verticalDelta) > Math.abs(horizontalDelta) ? 'height' : 'width');
 }
 
 function setCompositionSubjectImage(url) {
@@ -672,6 +764,7 @@ function setBusy(value) {
   generateButton.disabled = value;
   generateButton.textContent = value ? 'Gerando' : getGenerateButtonLabel();
   sourceInput.disabled = value;
+  clearGeneratedButton.disabled = value;
   saveCompositionButton.disabled = value;
   resetCompositionButton.disabled = value;
   sourceModeButtons.forEach((button) => {
