@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI Photobooth</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">AI Photobooth</p>
+        <h1>Photobooth</h1>
+      </div>
+      <p class="status-pill" id="cameraStatus">Camera aguardando</p>
+    </header>
+
+    <main class="workspace">
+      <section class="booth" aria-label="Camera do photobooth">
+        <div class="camera-stage">
+          <video id="cameraVideo" autoplay muted playsinline></video>
+          <canvas id="captureCanvas" hidden></canvas>
+          <div class="camera-empty" id="cameraEmpty">
+            <strong>Autorize a camera</strong>
+            <span>Use localhost ou HTTPS para liberar a captura.</span>
+          </div>
+          <div class="countdown" id="countdown" hidden>3</div>
+        </div>
+
+        <div class="controls">
+          <label class="field participant-field">
+            <span>Nome do participante</span>
+            <input id="participantName" type="text" maxlength="40" autocomplete="name" placeholder="Participante">
+          </label>
+
+          <label class="field camera-field">
+            <span>Camera</span>
+            <select id="cameraSelect">
+              <option value="">Padrao</option>
+            </select>
+          </label>
+
+          <button class="button" id="startCameraButton" type="button">Iniciar camera</button>
+          <button class="button primary" id="captureButton" type="button" disabled>Tirar 2 fotos</button>
+          <button class="button ghost" id="retakeButton" type="button" disabled>Refazer</button>
+        </div>
+      </section>
+
+      <aside class="strip-panel" aria-label="Tirinha e geracao de PDF">
+        <div class="strip-header">
+          <div>
+            <p class="eyebrow">Calibracao</p>
+            <h2>A/B 50 LPI</h2>
+          </div>
+          <span class="counter" id="photoCounter">0/2</span>
+        </div>
+
+        <ol class="photo-strip" id="photoStrip">
+          <li class="photo-slot"><span>1</span></li>
+          <li class="photo-slot"><span>2</span></li>
+        </ol>
+
+        <div class="pdf-actions">
+          <button class="button primary wide" id="generatePdfButton" type="button">Gerar teste forte A/B</button>
+          <a class="download-link" id="downloadLink" href="#" download hidden>Baixar PDF</a>
+        </div>
+
+        <div class="dpi-list" aria-label="Opcoes do teste 50 LPI">
+          <span>Fase</span>
+          <span>Pitch</span>
+          <span>A/B</span>
+          <span>600dpi</span>
+        </div>
+
+        <p class="message" id="message" role="status">Pronto para iniciar.</p>
+      </aside>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

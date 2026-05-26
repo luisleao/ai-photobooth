@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Gerador de Figurinhas</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">AI Photobooth</p>
+        <h1>Gerador Copa</h1>
+      </div>
+      <a class="nav-link" href="/photobooth/">Photobooth</a>
+    </header>
+
+    <main class="workspace">
+      <form class="generation-form" id="generationForm">
+        <section class="upload-panel">
+          <div class="source-mode" role="tablist" aria-label="Origem da imagem">
+            <button class="source-mode-button is-active" type="button" data-source-mode="upload">Arquivo</button>
+            <button class="source-mode-button" type="button" data-source-mode="camera">Webcam</button>
+          </div>
+
+          <div class="source-pane is-active" id="uploadPane">
+            <label class="drop-zone" id="dropZone">
+              <input id="sourceImage" name="sourceImage" type="file" accept="image/png,image/jpeg,image/webp">
+              <span class="drop-title">Imagem base</span>
+              <span class="drop-filename" id="fileName">Selecionar arquivo</span>
+            </label>
+          </div>
+
+          <div class="source-pane" id="cameraPane" hidden>
+            <div class="camera-frame">
+              <video class="camera-video" id="cameraVideo" autoplay muted playsinline></video>
+            </div>
+            <div class="camera-actions">
+              <button class="button secondary" id="openCameraButton" type="button">Abrir camera</button>
+              <button class="button secondary" id="captureCameraButton" type="button" disabled>Capturar</button>
+              <button class="button secondary" id="stopCameraButton" type="button" disabled>Fechar</button>
+            </div>
+            <canvas id="captureCanvas" hidden></canvas>
+          </div>
+
+          <img class="preview" id="preview" alt="Preview da imagem base" hidden>
+        </section>
+
+        <section class="fields-panel">
+          <div class="field-grid">
+            <label class="field">
+              <span>Nome</span>
+              <input name="participantName" type="text" maxlength="80" placeholder="Participante" required>
+            </label>
+
+            <label class="field">
+              <span>Apelido</span>
+              <input name="nickname" type="text" maxlength="60" placeholder="Craque">
+            </label>
+
+            <label class="field short">
+              <span>Numero</span>
+              <input name="jerseyNumber" type="text" maxlength="8" placeholder="10">
+            </label>
+
+            <label class="field">
+              <span>Posicao</span>
+              <input name="position" type="text" maxlength="80" placeholder="Craque da torcida">
+            </label>
+
+            <label class="field">
+              <span>Pais</span>
+              <input name="country" type="text" maxlength="60" placeholder="Brasil">
+            </label>
+
+            <label class="field">
+              <span>Cidade</span>
+              <input name="city" type="text" maxlength="80" placeholder="Sao Paulo">
+            </label>
+
+            <label class="field short">
+              <span>Edicao</span>
+              <input name="edition" type="text" maxlength="16" placeholder="2026">
+            </label>
+
+            <label class="field">
+              <span>Cores</span>
+              <input name="cardColors" type="text" maxlength="100" placeholder="verde, amarelo, azul e branco">
+            </label>
+          </div>
+
+          <label class="field">
+            <span>Personalidade</span>
+            <input name="personality" type="text" maxlength="180" placeholder="confiante, alegre e carismatico">
+          </label>
+
+          <label class="field">
+            <span>Detalhes extras</span>
+            <textarea name="extraDetails" maxlength="500" rows="4" placeholder="camisa, acessorios, texto do card, clima visual"></textarea>
+          </label>
+
+          <div class="composition-grid">
+            <label class="field">
+              <span>Fundo</span>
+              <input name="mainBackground" type="text" maxlength="16" value="#000d25" placeholder="#000d25">
+            </label>
+
+            <label class="field short">
+              <span>X</span>
+              <input name="mainImageLeft" type="number" value="90" step="1">
+            </label>
+
+            <label class="field short">
+              <span>Y</span>
+              <input name="mainImageTop" type="number" value="82" step="1">
+            </label>
+
+            <label class="field short">
+              <span>Largura</span>
+              <input name="mainImageWidth" type="number" value="990" min="100" step="1">
+            </label>
+
+            <label class="field short">
+              <span>Altura</span>
+              <input name="mainImageHeight" type="number" value="1485" min="100" step="1">
+            </label>
+
+            <label class="field short">
+              <span>Ajuste</span>
+              <select name="mainImageFit">
+                <option value="contain">contain</option>
+                <option value="cover">cover</option>
+                <option value="fill">fill</option>
+              </select>
+            </label>
+          </div>
+
+          <section class="composition-editor" aria-label="Ajuste visual da figurinha principal">
+            <div class="composition-editor-header">
+              <div>
+                <p class="eyebrow">Composicao</p>
+                <h2>Principal</h2>
+              </div>
+              <div class="composition-actions">
+                <button class="button secondary compact" id="saveCompositionButton" type="button">Salvar ajuste</button>
+                <button class="button secondary compact" id="resetCompositionButton" type="button">Restaurar .env</button>
+              </div>
+            </div>
+
+            <div class="composition-stage-shell">
+              <div class="composition-stage" id="compositionStage">
+                <img class="composition-layer" id="compositionBackground" alt="" aria-hidden="true">
+                <div class="composition-subject-box" id="compositionSubjectBox" role="img" aria-label="Area da imagem principal">
+                  <img class="composition-subject-image" id="compositionSubjectImage" alt="">
+                  <span class="composition-subject-label" id="compositionSubjectLabel">Imagem principal</span>
+                  <span class="resize-handle handle-n" data-handle="n" aria-hidden="true"></span>
+                  <span class="resize-handle handle-e" data-handle="e" aria-hidden="true"></span>
+                  <span class="resize-handle handle-s" data-handle="s" aria-hidden="true"></span>
+                  <span class="resize-handle handle-w" data-handle="w" aria-hidden="true"></span>
+                  <span class="resize-handle handle-ne" data-handle="ne" aria-hidden="true"></span>
+                  <span class="resize-handle handle-se" data-handle="se" aria-hidden="true"></span>
+                  <span class="resize-handle handle-sw" data-handle="sw" aria-hidden="true"></span>
+                  <span class="resize-handle handle-nw" data-handle="nw" aria-hidden="true"></span>
+                </div>
+                <img class="composition-layer composition-overlay" id="compositionOverlay" alt="" aria-hidden="true">
+              </div>
+            </div>
+          </section>
+
+          <button class="button primary" id="generateButton" type="submit">Gerar 11 imagens</button>
+        </section>
+      </form>
+
+      <section class="results-panel" aria-live="polite">
+        <div class="results-header">
+          <div>
+            <p class="eyebrow">Saidas</p>
+            <h2>Arquivos</h2>
+          </div>
+          <span class="status-pill" id="statusPill">Pronto</span>
+        </div>
+
+        <div class="results-grid" id="resultsGrid"></div>
+        <p class="message" id="message">Aguardando geração.</p>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
