@@ -1,0 +1,24 @@
+{
+  "name": "ai-photobooth",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI photobooth Express prototype with lenticular card PDF generation.",
+  "main": "server/src/index.js",
+  "scripts": {
+    "start": "node server/src/index.js",
+    "dev": "node server/src/index.js",
+    "check": "node --check server/src/index.js && node --check server/src/services/cardPdf.js"
+  },
+  "keywords": [
+    "photobooth",
+    "express",
+    "lenticular",
+    "pdf"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.2.1",
+    "pdfkit": "^0.18.0",
+    "sharp": "^0.34.5"
+  }
+}
