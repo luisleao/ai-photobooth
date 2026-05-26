@@ -1,0 +1,9 @@
+node_modules/
+.git/
+.gitignore
+.env
+.env.*
+*.log
+server/public/generated/
+scripts/pending/*
+scripts/printed/*
