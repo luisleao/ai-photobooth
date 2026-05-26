@@ -1,8 +1,10 @@
-const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const multer = require('multer');
-loadLocalEnv(path.resolve(process.cwd(), '.env'));
+const { loadEnv } = require('./services/env');
+
+loadEnv();
+
 const {
   LENTICULAR_LPI,
   LENTICULAR_DISPLAY_OPTIONS,
@@ -24,6 +26,23 @@ const {
   getMainCompositionAssetPath,
   getMainCompositionConfig,
 } = require('./services/generatedImages');
+const {
+  getEventId,
+  getFirebasePublicConfig,
+  getStorageRoot,
+  isFirebaseConfigured,
+  verifyFirebaseIdToken,
+} = require('./services/firebaseAdmin');
+const {
+  createPrintRequest,
+  ensureEventPrintLimit,
+  handleWhatsAppWebhook,
+  regenerateImagePackage,
+  resendStickerOutput,
+} = require('./services/whatsappPhotobooth');
+const {
+  markPrintDocumentStatus,
+} = require('./services/printQueue');
 
 const app = express();
 const publicDir = path.resolve(__dirname, '..', 'public');
@@ -86,6 +105,134 @@ app.get('/generator', (req, res, next) => {
 
   res.redirect(308, '/generator/');
 });
+
+app.get('/manager', (req, res) => {
+  res.sendFile(path.join(publicDir, 'manager.html'));
+});
+
+app.get('/api/photobooth/manager/config', async (req, res) => {
+  let printLimitPerProfile = null;
+
+  if (isFirebaseConfigured()) {
+    try {
+      printLimitPerProfile = await ensureEventPrintLimit();
+    } catch (error) {
+      console.error('[manager] failed to ensure event print limit', error);
+    }
+  }
+
+  res.json({
+    eventId: getEventId(),
+    firestoreRoot: `/events/${getEventId()}`,
+    storageRoot: getStorageRoot(),
+    printLimitPerProfile,
+    firebaseConfig: getFirebasePublicConfig(),
+  });
+});
+
+app.post('/api/photobooth/manager/prints', async (req, res, next) => {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+    const imageId = cleanString(req.body && req.body.imageId, 160);
+    const type = cleanString(req.body && req.body.type, 20) || 'stickers';
+
+    if (!imageId) {
+      throw clientError('missing_image_id', 'Informe a imagem para impressao.');
+    }
+
+    const result = await createPrintRequest({
+      imageId,
+      type,
+      participant: {
+        id: user.uid,
+      },
+      source: 'manager',
+      requestedBy: user.email || user.uid,
+    });
+
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/photobooth/manager/images/:imageId/regenerate', async (req, res, next) => {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+    const imageId = cleanString(req.params.imageId, 160);
+
+    if (!imageId) {
+      throw clientError('missing_image_id', 'Informe a imagem para regerar.');
+    }
+
+    regenerateImagePackage({
+      imageId,
+      requestedBy: user.email || user.uid,
+    }).catch((error) => {
+      console.error(`[manager] failed to regenerate ${imageId}`, error);
+    });
+
+    res.status(202).json({
+      ok: true,
+      imageId,
+      status: 'regenerating',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/photobooth/manager/images/:imageId/stickers/:outputId/resend', async (req, res, next) => {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+    const imageId = cleanString(req.params.imageId, 160);
+    const outputId = cleanString(req.params.outputId, 100);
+
+    if (!imageId || !outputId) {
+      throw clientError('missing_sticker_id', 'Informe a imagem e o sticker para reenvio.');
+    }
+
+    const result = await resendStickerOutput({
+      imageId,
+      outputId,
+      requestedBy: user.email || user.uid,
+    });
+
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/photobooth/manager/prints/:printId/status', async (req, res, next) => {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+    const printId = cleanString(req.params.printId, 180);
+    const status = cleanString(req.body && req.body.status, 40);
+    const allowed = new Set(['pending', 'queued', 'printed', 'cancelled', 'print-error', 'queue-error']);
+
+    if (!printId || !allowed.has(status)) {
+      throw clientError('invalid_print_status', 'Status de impressao invalido.');
+    }
+
+    const result = await markPrintDocumentStatus(
+      printId,
+      status,
+      user.email || user.uid,
+    );
+
+    if (!result.ok) {
+      throw clientError('print_not_found', 'Pedido de impressao nao encontrado.', 404);
+    }
+
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/photobooth/whatsapp', handleWhatsAppWebhook);
+app.post('/api/photobooth/whatsapp/webhook', handleWhatsAppWebhook);
 
 app.get('/api/photobooth/image-prompts', (req, res) => {
   res.json({
@@ -287,36 +434,6 @@ function getGenerationParamsFromRequest(req) {
 
 function cleanString(value, maxLength) {
   return String(value || '').trim().replace(/\s+/g, ' ').slice(0, maxLength);
-}
-
-function loadLocalEnv(envPath) {
-  if (!fs.existsSync(envPath)) {
-    return;
-  }
-
-  const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
-
-  lines.forEach((line) => {
-    const trimmed = line.trim();
-
-    if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) {
-      return;
-    }
-
-    const separatorIndex = trimmed.indexOf('=');
-    const key = trimmed.slice(0, separatorIndex).trim();
-    let value = trimmed.slice(separatorIndex + 1).trim();
-
-    if (!key || process.env[key] !== undefined) {
-      return;
-    }
-
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-
-    process.env[key] = value;
-  });
 }
 
 if (require.main === module) {

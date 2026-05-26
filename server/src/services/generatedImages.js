@@ -65,6 +65,7 @@ const MAIN_COMPOSITE_DEFAULTS = {
 async function generateWorldCupImages({
   sourceImage,
   params = {},
+  queueStickerSheet = true,
 }) {
   const source = parseImageDataUrl(sourceImage);
   const optimizedSource = await optimizeSourceForOpenAI(source.buffer);
@@ -92,6 +93,7 @@ async function generateWorldCupImages({
     spec: mainSpec,
     params,
     runId,
+    queueStickerSheet,
   });
   const secondarySource = await loadSecondarySourceFromRun(outputDir);
   const secondaryProvider = createImageProvider({
@@ -105,6 +107,7 @@ async function generateWorldCupImages({
     spec,
     params,
     runId,
+    queueStickerSheet,
   })));
 
   return {
@@ -120,6 +123,7 @@ async function generateWorldCupImage({
   params = {},
   specId,
   runId,
+  queueStickerSheet = true,
 }) {
   const spec = findImageSpec(specId);
   const requestedRunId = normalizeRunId(runId);
@@ -157,11 +161,12 @@ async function generateWorldCupImage({
     source: `/generated/${safeRunId}/source.png`,
     output: await generateAndSaveImage({
       provider,
-      outputDir,
-      spec,
-      params,
-      runId: safeRunId,
-    }),
+    outputDir,
+    spec,
+    params,
+    runId: safeRunId,
+    queueStickerSheet,
+  }),
   };
 }
 
@@ -219,6 +224,7 @@ async function generateAndSaveImage({
   spec,
   params,
   runId,
+  queueStickerSheet = true,
 }) {
   const prompt = buildPromptForSpec(spec, params);
   const generated = await provider.generate({
@@ -230,6 +236,7 @@ async function generateAndSaveImage({
     spec,
     imageBuffer: generated.buffer,
     params,
+    queueStickerSheet,
   });
 
   return withPublicFileUrls({
@@ -247,6 +254,7 @@ async function saveGeneratedImage({
   spec,
   imageBuffer,
   params,
+  queueStickerSheet = true,
 }) {
   if (spec.kind === 'main') {
     return saveMainCompositeImage({
@@ -288,7 +296,9 @@ async function saveGeneratedImage({
       height: SMALL_WEBP_SIZE,
     },
   ];
-  const stickerSheet = await createStickerSheetIfReady(outputDir);
+  const stickerSheet = await createStickerSheetIfReady(outputDir, {
+    queueStickerSheet,
+  });
 
   if (stickerSheet) {
     files.push(stickerSheet);
@@ -313,7 +323,9 @@ async function createStickerPngBuffer({
   return base;
 }
 
-async function createStickerSheetIfReady(outputDir) {
+async function createStickerSheetIfReady(outputDir, {
+  queueStickerSheet = true,
+} = {}) {
   const stickerSpecs = STICKER_SHEET_SPEC_IDS
     .map((id) => IMAGE_SPECS.find((spec) => spec.id === id))
     .filter(Boolean);
@@ -368,10 +380,15 @@ async function createStickerSheetIfReady(outputDir) {
     .png({ compressionLevel: 9 })
     .toFile(sheetPath);
 
-  const printQueue = await copyStickerSheetToPendingQueue({
-    outputDir,
-    sheetPath,
-  });
+  const printQueue = queueStickerSheet
+    ? await copyStickerSheetToPendingQueue({
+      outputDir,
+      sheetPath,
+    })
+    : {
+      queued: false,
+      reason: 'queue-disabled',
+    };
 
   return {
     type: 'sticker-sheet-3.5x6',
@@ -381,6 +398,28 @@ async function createStickerSheetIfReady(outputDir) {
     density: STICKER_SHEET_SIZE.density,
     printQueue,
   };
+}
+
+async function ensureStickerSheetForRun(runId, {
+  queueStickerSheet = true,
+} = {}) {
+  const outputDir = getGeneratedRunDirectory(runId);
+  const stickerSheet = await createStickerSheetIfReady(outputDir, {
+    queueStickerSheet,
+  });
+
+  if (!stickerSheet) {
+    throw clientError('sticker_sheet_not_ready', 'Grid de figurinhas ainda nao esta pronto.');
+  }
+
+  return withPublicFileUrls({
+    id: 'sticker-sheet',
+    title: 'Sticker Sheet',
+    kind: 'sheet',
+    prompt: '',
+    provider: 'sharp',
+    files: [stickerSheet],
+  }, runId).files[0];
 }
 
 async function copyStickerSheetToPendingQueue({
@@ -596,6 +635,26 @@ function getMainCompositionAssetPath(kind) {
   }
 
   throw clientError('invalid_main_card_asset', 'Asset da figurinha principal invalido.');
+}
+
+function getGeneratedRunDirectory(runId) {
+  const safeRunId = normalizeRunId(runId);
+
+  if (!safeRunId) {
+    throw clientError('invalid_run_id', 'Run ID invalido.');
+  }
+
+  return path.join(GENERATED_ROOT, safeRunId);
+}
+
+function getGeneratedFilePath(runId, filename) {
+  const cleanFilename = path.basename(String(filename || ''));
+
+  if (!cleanFilename) {
+    throw clientError('invalid_generated_file', 'Arquivo gerado invalido.');
+  }
+
+  return path.join(getGeneratedRunDirectory(runId), cleanFilename);
 }
 
 function configurationError() {
@@ -985,9 +1044,13 @@ module.exports = {
   SMALL_PNG_SIZE,
   SMALL_WEBP_SIZE,
   MAX_SOURCE_IMAGE_BYTES,
+  STICKER_SHEET_FILENAME,
   generateWorldCupImages,
   generateWorldCupImage,
+  ensureStickerSheetForRun,
   clearGeneratedImages,
+  getGeneratedFilePath,
+  getGeneratedRunDirectory,
   getImageSpecSummaries,
   getImageGenerationStatus,
   getMainCompositionAssetPath,

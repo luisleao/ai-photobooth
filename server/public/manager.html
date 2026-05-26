@@ -1,0 +1,1099 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Photobooth Manager</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #15202b;
+        --muted: #687585;
+        --line: #d9e1e8;
+        --panel: #ffffff;
+        --surface: #f4f7fa;
+        --green: #087443;
+        --blue: #174f8a;
+        --yellow: #ffd447;
+        --red: #bd2734;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        background: var(--surface);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      button {
+        border: 0;
+        border-radius: 6px;
+        padding: 10px 14px;
+        color: #fff;
+        background: var(--blue);
+        cursor: pointer;
+        font-weight: 700;
+      }
+
+      button.secondary {
+        background: #566170;
+      }
+
+      button.warning {
+        background: var(--red);
+      }
+
+      button.success {
+        background: var(--green);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      input,
+      select {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 11px 12px;
+        background: #fff;
+      }
+
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 18px 24px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.94);
+        backdrop-filter: blur(10px);
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 22px;
+        line-height: 1.2;
+      }
+
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 360px;
+        gap: 20px;
+        padding: 20px 24px 32px;
+      }
+
+      .auth {
+        max-width: 380px;
+        margin: 12vh auto 0;
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .auth h2 {
+        margin-bottom: 16px;
+        font-size: 20px;
+      }
+
+      .auth label {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 14px;
+        font-weight: 700;
+      }
+
+      .auth button {
+        width: 100%;
+        margin-top: 4px;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      .toolbar small,
+      .muted {
+        color: var(--muted);
+      }
+
+      .status-filter {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 16px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        background: var(--panel);
+      }
+
+      .metric strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 26px;
+        line-height: 1;
+      }
+
+      .tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .tab-button {
+        border-radius: 6px 6px 0 0;
+        color: var(--muted);
+        background: transparent;
+      }
+
+      .tab-button.active {
+        color: #fff;
+        background: var(--blue);
+      }
+
+      .participants {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 22px;
+      }
+
+      .participant-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1.3fr) repeat(5, minmax(72px, 0.4fr));
+        gap: 10px;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 12px;
+        background: var(--panel);
+      }
+
+      .participant-row strong {
+        display: block;
+      }
+
+      .participant-stat {
+        text-align: right;
+      }
+
+      .participant-stat span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+      }
+
+      .package,
+      .queue {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        overflow: hidden;
+      }
+
+      .preview {
+        display: grid;
+        place-items: center;
+        min-height: 260px;
+        background: #eef3f7;
+      }
+
+      .preview img {
+        width: 100%;
+        height: 300px;
+        object-fit: contain;
+      }
+
+      .package-body,
+      .queue-body {
+        display: grid;
+        gap: 12px;
+        padding: 14px;
+      }
+
+      .package-title {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        border-radius: 999px;
+        padding: 3px 9px;
+        color: #fff;
+        background: #637083;
+        font-size: 12px;
+        font-weight: 800;
+        white-space: nowrap;
+      }
+
+      .status.completed,
+      .status.printed {
+        background: var(--green);
+      }
+
+      .status.error,
+      .status.cancelled {
+        background: var(--red);
+      }
+
+      .status.pending,
+      .status.queued,
+      .status.waiting-file {
+        color: #162033;
+        background: var(--yellow);
+      }
+
+      .stickers {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+      }
+
+      .stickers button {
+        display: block;
+        border: 0;
+        border-radius: 6px;
+        padding: 0;
+        background: #fff;
+        cursor: zoom-in;
+      }
+
+      .stickers img {
+        width: 100%;
+        aspect-ratio: 1;
+        object-fit: contain;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+      }
+
+      .zoom-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: rgba(6, 16, 30, 0.82);
+      }
+
+      .zoom-frame {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: min(88vw, 780px);
+        height: min(88vh, 780px);
+      }
+
+      .zoom-frame img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        background: transparent;
+      }
+
+      .zoom-close {
+        position: absolute;
+        top: 0;
+        right: 0;
+        transform: translateY(-110%);
+      }
+
+      .zoom-resend {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        transform: translateY(120%);
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      aside {
+        position: sticky;
+        top: 82px;
+        align-self: start;
+      }
+
+      .queue-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      .empty {
+        padding: 24px;
+        border: 1px dashed var(--line);
+        border-radius: 8px;
+        color: var(--muted);
+        background: #fff;
+      }
+
+      @media (max-width: 960px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+
+        aside {
+          position: static;
+        }
+
+        .participant-row {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .participant-stat {
+          text-align: left;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>AI Photobooth Manager</h1>
+        <p class="muted" id="event-label"></p>
+      </div>
+      <button class="secondary hidden" id="logout-button" type="button">Sair</button>
+    </header>
+
+    <section class="auth" id="auth-panel">
+      <h2>Entrar</h2>
+      <label>
+        Email
+        <input id="email" type="email" autocomplete="email" />
+      </label>
+      <label>
+        Senha
+        <input id="password" type="password" autocomplete="current-password" />
+      </label>
+      <button id="login-button" type="button">Entrar</button>
+      <p class="muted" id="auth-message"></p>
+    </section>
+
+    <main class="hidden" id="manager-panel">
+      <section>
+        <div class="metrics">
+          <div class="metric">
+            <span class="muted">Fotos geradas</span>
+            <strong id="metric-photos-generated">0</strong>
+          </div>
+          <div class="metric">
+            <span class="muted">Principais impressas</span>
+            <strong id="metric-main-printed">0</strong>
+          </div>
+          <div class="metric">
+            <span class="muted">Stickers impressos</span>
+            <strong id="metric-stickers-printed">0</strong>
+          </div>
+          <div class="metric">
+            <span class="muted">Limite por participante</span>
+            <strong id="metric-print-limit">0</strong>
+          </div>
+          <div class="metric">
+            <span class="muted">Tempo médio</span>
+            <strong id="metric-generation-average">0s</strong>
+          </div>
+        </div>
+
+        <div class="tabs" role="tablist" aria-label="Dados do manager">
+          <button class="tab-button active" id="images-tab-button" type="button" data-tab="images">Imagens</button>
+          <button class="tab-button" id="profiles-tab-button" type="button" data-tab="profiles">Participantes</button>
+        </div>
+
+        <div class="tab-panel" id="images-tab">
+          <div class="toolbar">
+            <h2>Imagens</h2>
+            <small id="images-count">0 imagem(ns)</small>
+          </div>
+          <div class="grid" id="images"></div>
+        </div>
+
+        <div class="tab-panel hidden" id="profiles-tab">
+          <div class="toolbar">
+            <h2>Participantes</h2>
+            <small id="profiles-count">0 participante(s)</small>
+          </div>
+          <div class="participants" id="profiles"></div>
+        </div>
+      </section>
+
+      <aside>
+        <label class="status-filter">
+          Status da fila
+          <select id="print-status-filter">
+            <option value="open">Em aberto</option>
+            <option value="pending">Pendente</option>
+            <option value="waiting-file">Aguardando arquivo</option>
+            <option value="queued">Na pasta pending</option>
+            <option value="print-error">Erro na principal</option>
+            <option value="queue-error">Erro no sticker</option>
+            <option value="printed">Impresso</option>
+            <option value="cancelled">Cancelado</option>
+            <option value="all">Todos</option>
+          </select>
+        </label>
+
+        <div class="toolbar">
+          <h2>Foto principal</h2>
+          <small id="main-print-count">0 item(ns)</small>
+        </div>
+        <div class="queue-list" id="main-prints"></div>
+
+        <div class="toolbar" style="margin-top: 20px;">
+          <h2>Stickers</h2>
+          <small id="sticker-print-count">0 item(ns)</small>
+        </div>
+        <div class="queue-list" id="sticker-prints"></div>
+      </aside>
+    </main>
+
+    <div class="zoom-modal hidden" id="zoom-modal" role="dialog" aria-modal="true" aria-label="Sticker ampliado">
+      <div class="zoom-frame">
+        <button class="secondary zoom-close" id="zoom-close" type="button">Fechar</button>
+        <img id="zoom-image" alt="" />
+        <button class="success zoom-resend" id="zoom-resend" type="button">Reenviar WhatsApp</button>
+      </div>
+    </div>
+
+    <script>
+      const state = {
+        eventId: '',
+        db: null,
+        auth: null,
+        eventUnsubscribe: null,
+        imageUnsubscribe: null,
+        profileUnsubscribe: null,
+        printUnsubscribe: null,
+        printRows: [],
+        printStatusFilter: 'open',
+        zoomSticker: null,
+      };
+
+      const authPanel = document.getElementById('auth-panel');
+      const managerPanel = document.getElementById('manager-panel');
+      const authMessage = document.getElementById('auth-message');
+      const profilesEl = document.getElementById('profiles');
+      const imagesEl = document.getElementById('images');
+      const mainPrintsEl = document.getElementById('main-prints');
+      const stickerPrintsEl = document.getElementById('sticker-prints');
+      const profilesCount = document.getElementById('profiles-count');
+      const imagesCount = document.getElementById('images-count');
+      const mainPrintCount = document.getElementById('main-print-count');
+      const stickerPrintCount = document.getElementById('sticker-print-count');
+      const printStatusFilter = document.getElementById('print-status-filter');
+      const metricPhotosGenerated = document.getElementById('metric-photos-generated');
+      const metricMainPrinted = document.getElementById('metric-main-printed');
+      const metricStickersPrinted = document.getElementById('metric-stickers-printed');
+      const metricPrintLimit = document.getElementById('metric-print-limit');
+      const metricGenerationAverage = document.getElementById('metric-generation-average');
+      const zoomModal = document.getElementById('zoom-modal');
+      const zoomImage = document.getElementById('zoom-image');
+      const zoomClose = document.getElementById('zoom-close');
+      const zoomResend = document.getElementById('zoom-resend');
+      const logoutButton = document.getElementById('logout-button');
+
+      boot();
+
+      async function boot() {
+        const configResponse = await fetch('/api/photobooth/manager/config');
+        const config = await configResponse.json();
+
+        state.eventId = config.eventId;
+        document.getElementById('event-label').textContent = config.firestoreRoot;
+        if (config.printLimitPerProfile !== null && config.printLimitPerProfile !== undefined) {
+          metricPrintLimit.textContent = formatNumber(config.printLimitPerProfile);
+        }
+
+        if (!config.firebaseConfig || !config.firebaseConfig.apiKey) {
+          authMessage.textContent = 'Firebase publico nao configurado no ambiente.';
+          return;
+        }
+
+        firebase.initializeApp(config.firebaseConfig);
+        state.db = firebase.firestore();
+        state.auth = firebase.auth();
+
+        document.getElementById('login-button').addEventListener('click', login);
+        logoutButton.addEventListener('click', () => state.auth.signOut());
+        printStatusFilter.addEventListener('change', () => {
+          state.printStatusFilter = printStatusFilter.value;
+          renderPrintLists();
+        });
+        zoomClose.addEventListener('click', closeStickerZoom);
+        zoomResend.addEventListener('click', resendZoomSticker);
+        zoomModal.addEventListener('click', (event) => {
+          if (event.target === zoomModal) {
+            closeStickerZoom();
+          }
+        });
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !zoomModal.classList.contains('hidden')) {
+            closeStickerZoom();
+          }
+        });
+        document.querySelectorAll('[data-tab]').forEach((button) => {
+          button.addEventListener('click', () => setActiveTab(button.dataset.tab));
+        });
+        document.getElementById('password').addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') {
+            login();
+          }
+        });
+
+        state.auth.onAuthStateChanged((user) => {
+          if (user) {
+            authPanel.classList.add('hidden');
+            managerPanel.classList.remove('hidden');
+            logoutButton.classList.remove('hidden');
+            listenEventStats();
+            listenProfiles();
+            listenImages();
+            listenPrints();
+          } else {
+            authPanel.classList.remove('hidden');
+            managerPanel.classList.add('hidden');
+            logoutButton.classList.add('hidden');
+            stopListeners();
+          }
+        });
+      }
+
+      async function login() {
+        authMessage.textContent = '';
+
+        try {
+          await state.auth.signInWithEmailAndPassword(
+            document.getElementById('email').value,
+            document.getElementById('password').value,
+          );
+        } catch (error) {
+          authMessage.textContent = error.message;
+        }
+      }
+
+      function setActiveTab(tab) {
+        const next = tab === 'profiles' ? 'profiles' : 'images';
+
+        document.querySelectorAll('[data-tab]').forEach((button) => {
+          button.classList.toggle('active', button.dataset.tab === next);
+        });
+        document.getElementById('images-tab').classList.toggle('hidden', next !== 'images');
+        document.getElementById('profiles-tab').classList.toggle('hidden', next !== 'profiles');
+      }
+
+      function listenEventStats() {
+        if (state.eventUnsubscribe) {
+          state.eventUnsubscribe();
+        }
+
+        state.eventUnsubscribe = state.db
+          .collection('events')
+          .doc(state.eventId)
+          .onSnapshot((doc) => {
+            const item = doc.data() || {};
+            const stats = item.stats || {};
+            const prints = stats.prints || {};
+            const generation = stats.generation || {};
+
+            metricPhotosGenerated.textContent = formatNumber(stats.photosGenerated);
+            metricMainPrinted.textContent = formatNumber(prints.mainPrinted);
+            metricStickersPrinted.textContent = formatNumber(prints.stickersPrinted);
+            metricPrintLimit.textContent = item.printLimitPerProfile === undefined
+              ? '-'
+              : formatNumber(item.printLimitPerProfile);
+            metricGenerationAverage.textContent = formatAverageDuration(generation);
+          });
+      }
+
+      function listenProfiles() {
+        if (state.profileUnsubscribe) {
+          state.profileUnsubscribe();
+        }
+
+        state.profileUnsubscribe = state.db
+          .collection('events')
+          .doc(state.eventId)
+          .collection('profiles')
+          .orderBy('updatedAt', 'desc')
+          .limit(120)
+          .onSnapshot((snapshot) => {
+            profilesCount.textContent = `${snapshot.size} participante(s)`;
+            profilesEl.innerHTML = '';
+
+            if (!snapshot.size) {
+              profilesEl.innerHTML = '<div class="empty">Nenhum participante encontrado.</div>';
+              return;
+            }
+
+            snapshot.forEach((doc) => profilesEl.appendChild(renderProfile(doc.id, doc.data())));
+          }, (error) => {
+            profilesEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+          });
+      }
+
+      function listenImages() {
+        if (state.imageUnsubscribe) {
+          state.imageUnsubscribe();
+        }
+
+        state.imageUnsubscribe = state.db
+          .collection('events')
+          .doc(state.eventId)
+          .collection('images')
+          .orderBy('createdAt', 'desc')
+          .limit(100)
+          .onSnapshot((snapshot) => {
+            imagesCount.textContent = `${snapshot.size} imagem(ns)`;
+            imagesEl.innerHTML = '';
+
+            if (!snapshot.size) {
+              imagesEl.innerHTML = '<div class="empty">Nenhuma imagem encontrada.</div>';
+              return;
+            }
+
+            snapshot.forEach((doc) => imagesEl.appendChild(renderImage(doc.id, doc.data())));
+          }, (error) => {
+            imagesEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+          });
+      }
+
+      function listenPrints() {
+        if (state.printUnsubscribe) {
+          state.printUnsubscribe();
+        }
+
+        state.printUnsubscribe = state.db
+          .collection('events')
+          .doc(state.eventId)
+          .collection('prints')
+          .orderBy('requestedAt', 'desc')
+          .limit(120)
+          .onSnapshot((snapshot) => {
+            state.printRows = [];
+            snapshot.forEach((doc) => {
+              const item = doc.data();
+              state.printRows.push({ id: doc.id, data: item });
+            });
+
+            renderPrintLists();
+          }, (error) => {
+            mainPrintsEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+            stickerPrintsEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+          });
+      }
+
+      function renderPrintLists() {
+        const filteredRows = state.printRows.filter((row) => matchesPrintStatus(row.data));
+        const totalMain = state.printRows.filter((row) => row.data.type === 'main').length;
+        const totalStickers = state.printRows.filter((row) => row.data.type !== 'main').length;
+        const mainDocs = filteredRows.filter((row) => row.data.type === 'main');
+        const stickerDocs = filteredRows.filter((row) => row.data.type !== 'main');
+
+        mainPrintCount.textContent = `${mainDocs.length}/${totalMain} item(ns)`;
+        stickerPrintCount.textContent = `${stickerDocs.length}/${totalStickers} item(ns)`;
+        mainPrintsEl.innerHTML = '';
+        stickerPrintsEl.innerHTML = '';
+
+        if (!mainDocs.length) {
+          mainPrintsEl.innerHTML = '<div class="empty">Nenhuma foto principal neste status.</div>';
+        } else {
+          mainDocs.forEach((row) => mainPrintsEl.appendChild(renderPrintItem(row.id, row.data)));
+        }
+
+        if (!stickerDocs.length) {
+          stickerPrintsEl.innerHTML = '<div class="empty">Nenhum sticker neste status.</div>';
+        } else {
+          stickerDocs.forEach((row) => stickerPrintsEl.appendChild(renderPrintItem(row.id, row.data)));
+        }
+      }
+
+      function matchesPrintStatus(item) {
+        const filter = state.printStatusFilter || 'open';
+        const status = item.status || 'pending';
+
+        if (filter === 'all') {
+          return true;
+        }
+
+        if (filter === 'open') {
+          return ['pending', 'waiting-file', 'queued'].includes(status);
+        }
+
+        return status === filter;
+      }
+
+      function renderImage(imageId, item) {
+        const article = document.createElement('article');
+        article.className = 'package';
+        const mainUrl = getMainImageUrl(item);
+        const stickerItems = getStickerItems(item);
+        const participantName = item.profile?.profileName || 'Participante';
+        const phone = item.profile?.phoneNumber || '';
+        const generation = item.generation || {};
+        const durationLabel = generation.lastDurationMs
+          ? `Geracao: ${formatDuration(generation.lastDurationMs)}`
+          : '';
+        const receivedLabel = generation.lastReceivedToCompletedMs
+          ? `recebida ate pronta: ${formatDuration(generation.lastReceivedToCompletedMs)}`
+          : '';
+
+        article.innerHTML = `
+          <div class="preview">
+            ${mainUrl ? `<img src="${mainUrl}" alt="${escapeHtml(participantName)}" loading="lazy" />` : '<span class="muted">sem imagem principal</span>'}
+          </div>
+          <div class="package-body">
+            <div class="package-title">
+              <div>
+                <h3>${escapeHtml(participantName)}</h3>
+                <p class="muted">${escapeHtml(maskPhone(phone))}</p>
+              </div>
+              <span class="status ${escapeAttr(item.status || 'pending')}">${escapeHtml(item.status || 'pending')}</span>
+            </div>
+            ${durationLabel ? `<p class="muted">${escapeHtml([durationLabel, receivedLabel].filter(Boolean).join(' · '))}</p>` : ''}
+            <div class="stickers">
+              ${stickerItems.map((sticker) => `
+                <button
+                  type="button"
+                  data-zoom-src="${escapeHtml(sticker.url)}"
+                  data-zoom-image-id="${escapeHtml(imageId)}"
+                  data-zoom-output-id="${escapeHtml(sticker.outputId)}"
+                >
+                  <img src="${escapeHtml(sticker.url)}" alt="${escapeHtml(sticker.title)}" loading="lazy" />
+                </button>
+              `).join('')}
+            </div>
+            <div class="actions">
+              <button type="button" data-action="regenerate">Regerar</button>
+              <button type="button" class="success" data-action="print-stickers">Imprimir stickers</button>
+              <button type="button" class="secondary" data-action="print-main">Reimprimir principal</button>
+            </div>
+          </div>
+        `;
+
+        article.querySelectorAll('[data-zoom-src]').forEach((button) => {
+          button.addEventListener('click', () => openStickerZoom({
+            url: button.dataset.zoomSrc,
+            imageId: button.dataset.zoomImageId,
+            outputId: button.dataset.zoomOutputId,
+          }));
+        });
+        article.querySelector('[data-action="regenerate"]').addEventListener('click', () => regenerateImage(imageId));
+        article.querySelector('[data-action="print-stickers"]').addEventListener('click', () => requestPrint(imageId, 'stickers'));
+        article.querySelector('[data-action="print-main"]').addEventListener('click', () => requestPrint(imageId, 'main'));
+
+        return article;
+      }
+
+      function renderProfile(profileId, item) {
+        const article = document.createElement('article');
+        article.className = 'participant-row';
+        const stats = item.stats || {};
+        const prints = stats.prints || {};
+        const generation = stats.generation || {};
+        const name = item.profileName || item.whatsappProfile?.profileName || 'Participante';
+        const unlimited = item.unlimited === true ? ' · ilimitado' : '';
+
+        article.innerHTML = `
+          <div>
+            <strong>${escapeHtml(name)}</strong>
+            <span class="muted">${escapeHtml(maskPhone(item.phoneNumber || profileId))}${escapeHtml(unlimited)}</span>
+          </div>
+          <div class="participant-stat">
+            ${formatNumber(stats.imagesSubmitted)}
+            <span>recebidas</span>
+          </div>
+          <div class="participant-stat">
+            ${formatNumber(stats.photosGenerated)}
+            <span>geradas</span>
+          </div>
+          <div class="participant-stat">
+            ${formatAverageDuration(generation)}
+            <span>tempo medio</span>
+          </div>
+          <div class="participant-stat">
+            ${formatNumber(prints.mainPrinted)}
+            <span>principal</span>
+          </div>
+          <div class="participant-stat">
+            ${formatNumber(prints.stickersPrinted)}
+            <span>stickers</span>
+          </div>
+        `;
+
+        return article;
+      }
+
+      function renderPrintItem(printId, item) {
+        const article = document.createElement('article');
+        article.className = 'queue';
+        const profile = item.profile || {};
+
+        article.innerHTML = `
+          <div class="queue-body">
+            <div class="package-title">
+              <div>
+                <h3>${escapeHtml(profile.profileName || printId)}</h3>
+                <p class="muted">${escapeHtml(maskPhone(profile.phoneNumber || ''))}</p>
+              </div>
+              <span class="status ${escapeAttr(item.status || 'pending')}">${escapeHtml(item.status || 'pending')}</span>
+            </div>
+            <p class="muted">${escapeHtml(item.type || 'stickers')} · ${escapeHtml(item.pendingFilename || item.imageId || 'aguardando arquivo')}</p>
+            <div class="actions">
+              <button type="button" class="secondary" data-status="pending">Pendente</button>
+              <button type="button" class="success" data-status="printed">Impresso</button>
+              <button type="button" class="warning" data-status="cancelled">Cancelar</button>
+            </div>
+          </div>
+        `;
+
+        article.querySelectorAll('[data-status]').forEach((button) => {
+          button.addEventListener('click', () => updatePrintStatus(printId, button.dataset.status));
+        });
+
+        return article;
+      }
+
+      async function requestPrint(imageId, type) {
+        await apiPost('/api/photobooth/manager/prints', { imageId, type });
+      }
+
+      async function regenerateImage(imageId) {
+        await apiPost(`/api/photobooth/manager/images/${encodeURIComponent(imageId)}/regenerate`, {});
+      }
+
+      async function updatePrintStatus(printId, status) {
+        await apiPost(`/api/photobooth/manager/prints/${encodeURIComponent(printId)}/status`, { status });
+      }
+
+      function openStickerZoom(sticker) {
+        if (!sticker || !sticker.url) {
+          return;
+        }
+
+        state.zoomSticker = sticker;
+        zoomImage.src = sticker.url;
+        zoomResend.disabled = !sticker.imageId || !sticker.outputId;
+        zoomResend.textContent = 'Reenviar WhatsApp';
+        zoomModal.classList.remove('hidden');
+      }
+
+      function closeStickerZoom() {
+        zoomModal.classList.add('hidden');
+        zoomImage.removeAttribute('src');
+        state.zoomSticker = null;
+        zoomResend.disabled = false;
+        zoomResend.textContent = 'Reenviar WhatsApp';
+      }
+
+      async function resendZoomSticker() {
+        const sticker = state.zoomSticker;
+
+        if (!sticker || !sticker.imageId || !sticker.outputId) {
+          return;
+        }
+
+        zoomResend.disabled = true;
+        zoomResend.textContent = 'Reenviando...';
+
+        try {
+          await apiPost(
+            `/api/photobooth/manager/images/${encodeURIComponent(sticker.imageId)}/stickers/${encodeURIComponent(sticker.outputId)}/resend`,
+            {},
+          );
+          zoomResend.textContent = 'Reenviado';
+          setTimeout(() => {
+            if (state.zoomSticker === sticker) {
+              zoomResend.disabled = false;
+              zoomResend.textContent = 'Reenviar WhatsApp';
+            }
+          }, 1400);
+        } catch (error) {
+          zoomResend.disabled = false;
+          zoomResend.textContent = 'Reenviar WhatsApp';
+        }
+      }
+
+      async function apiPost(url, body) {
+        const token = await state.auth.currentUser.getIdToken();
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        });
+        const payload = await response.json().catch(() => ({ message: response.statusText }));
+
+        if (!response.ok) {
+          alert(payload.message || 'Falha ao executar acao.');
+          throw new Error(payload.message || 'Falha ao executar acao.');
+        }
+
+        return payload;
+      }
+
+      function getMainImageUrl(item) {
+        return Object.values(item.outputs || {})
+          .find((output) => output.kind === 'main')
+          ?.files
+          ?.find((file) => file.type === 'print-png')
+          ?.signedUrl || '';
+      }
+
+      function getStickerItems(item) {
+        return Object.values(item.outputs || {})
+          .filter((output) => output.kind === 'sticker')
+          .map((output) => {
+            const file = output.files?.find((item) => item.type === 'webp' && item.signedUrl)
+              || output.files?.find((item) => item.signedUrl);
+
+            if (!file) {
+              return null;
+            }
+
+            return {
+              outputId: output.id,
+              title: output.title || output.id,
+              url: file.signedUrl,
+            };
+          })
+          .filter((item) => item && item.url && item.outputId)
+          .slice(0, 10);
+      }
+
+      function stopListeners() {
+        if (state.eventUnsubscribe) {
+          state.eventUnsubscribe();
+          state.eventUnsubscribe = null;
+        }
+
+        if (state.profileUnsubscribe) {
+          state.profileUnsubscribe();
+          state.profileUnsubscribe = null;
+        }
+
+        if (state.imageUnsubscribe) {
+          state.imageUnsubscribe();
+          state.imageUnsubscribe = null;
+        }
+
+        if (state.printUnsubscribe) {
+          state.printUnsubscribe();
+          state.printUnsubscribe = null;
+        }
+      }
+
+      function maskPhone(phone) {
+        const text = String(phone || '').replace(/^whatsapp:/, '');
+
+        if (text.length < 9) {
+          return text;
+        }
+
+        return `${text.slice(0, -8)}****-${text.slice(-4)}`;
+      }
+
+      function escapeHtml(value) {
+        return String(value || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function escapeAttr(value) {
+        return String(value || '').replace(/[^a-zA-Z0-9_-]+/g, '-');
+      }
+
+      function formatNumber(value) {
+        return Number(value || 0).toLocaleString('pt-BR');
+      }
+
+      function formatAverageDuration(generation) {
+        const count = Number(generation?.completedCount || 0);
+        const total = Number(generation?.totalDurationMs || 0);
+
+        if (!count || !total) {
+          return '0s';
+        }
+
+        return formatDuration(total / count);
+      }
+
+      function formatDuration(ms) {
+        const totalSeconds = Math.max(0, Math.round(Number(ms || 0) / 1000));
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+
+        if (minutes) {
+          return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+        }
+
+        return `${seconds}s`;
+      }
+    </script>
+  </body>
+</html>

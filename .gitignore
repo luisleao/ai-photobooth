@@ -10,6 +10,7 @@ server/public/generated/
 server/src/public/
 scripts/pending/*
 scripts/printed/*
+scripts/printings/*
 !scripts/pending/.gitkeep
 !scripts/printed/.gitkeep
 

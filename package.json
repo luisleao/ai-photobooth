@@ -9,7 +9,7 @@
     "dev": "node server/src/index.js",
     "printer": "node scripts/printer.js",
     "generated:clear": "node scripts/clearGenerated.js",
-    "check": "node --check server/src/index.js && node --check server/src/services/cardPdf.js && node --check server/src/services/generatedImages.js && node --check server/src/services/worldCupImagePrompts.js && node --check server/public/generator/app.js && node --check scripts/printer.js && node --check scripts/clearGenerated.js"
+    "check": "node --check server/src/index.js && node --check server/src/services/cardPdf.js && node --check server/src/services/generatedImages.js && node --check server/src/services/worldCupImagePrompts.js && node --check server/src/services/firebaseAdmin.js && node --check server/src/services/phone.js && node --check server/src/services/twilioWhatsApp.js && node --check server/src/services/whatsappPhotobooth.js && node --check server/src/services/printQueue.js && node --check server/public/generator/app.js && node --check scripts/printer.js && node --check scripts/clearGenerated.js"
   },
   "keywords": [
     "photobooth",
@@ -19,10 +19,14 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "firebase-admin": "^13.10.0",
     "multer": "^2.1.1",
     "openai": "^6.39.0",
+    "pdf-to-printer": "^5.8.0",
     "pdfkit": "^0.18.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "twilio": "^6.0.2"
   }
 }
