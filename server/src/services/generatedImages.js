@@ -418,8 +418,11 @@ async function createStickerSheetIfReady(outputDir, {
 
 function createStickerSheetHeaderLayer(params = {}) {
   const width = STICKER_SHEET_SIZE.width - STICKER_SHEET_HEADER.left * 2;
-  const name = truncateLabel(params.participantName || params.profileName || 'Participante', 36);
-  const phone = maskParticipantPhone(params.phoneNumber || params.participantPhone || params.whatsAppAddress || '');
+  const name = truncateLabel(normalizeHeaderText(
+    params.participantName || params.profileName,
+    'Participante',
+  ), 36);
+  const phone = getMaskedParticipantPhone(params);
   const phoneLabel = phone || 'Telefone nao informado';
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${STICKER_SHEET_HEADER.height}" viewBox="0 0 ${width} ${STICKER_SHEET_HEADER.height}">
@@ -450,15 +453,66 @@ function truncateLabel(value, maxLength) {
 }
 
 function maskParticipantPhone(value) {
-  const text = String(value || '')
-    .trim()
-    .replace(/^whatsapp:/i, '');
+  const text = normalizePhoneForHeader(value);
 
-  if (text.length < 9) {
-    return text;
+  if (!text) {
+    return '';
   }
 
   return `${text.slice(0, -8)}****-${text.slice(-4)}`;
+}
+
+function getMaskedParticipantPhone(params = {}) {
+  const candidates = [
+    params.phoneNumber,
+    params.participantPhone,
+    params.whatsAppAddress,
+    params.waId,
+    params.from,
+  ];
+
+  for (const candidate of candidates) {
+    const masked = maskParticipantPhone(candidate);
+
+    if (masked) {
+      return masked;
+    }
+  }
+
+  return '';
+}
+
+function normalizePhoneForHeader(value) {
+  const raw = String(value || '')
+    .trim()
+    .replace(/^whatsapp:/i, '');
+
+  if (!raw || /^[a-f0-9]{32}$/i.test(raw)) {
+    return '';
+  }
+
+  const digits = raw.replace(/\D/g, '');
+
+  if (digits.length < 9) {
+    return '';
+  }
+
+  return raw.startsWith('+') ? `+${digits}` : digits;
+}
+
+function normalizeHeaderText(value, fallback) {
+  const text = String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9 .'-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!/[A-Za-z0-9]/.test(text)) {
+    return fallback;
+  }
+
+  return text;
 }
 
 async function ensureStickerSheetForRun(runId, {
@@ -836,6 +890,8 @@ async function generateWithOpenAI({
       prompt,
       'Output requirement: return a real PNG with a real transparent alpha channel.',
       'Identity preservation is the highest priority: preserve the source person face shape, apparent age, skin tone, nose, mouth, eyes, eyebrows, smile, hairline, hair, facial hair, and unique facial features. Do not beautify, reshape, slim, age, de-age, symmetrize, or turn the person into a different face.',
+      'If the source image contains a clear foreground group, preserve the exact real people from the source with a maximum of three people. One source person means one output person; two source people means two output people; three source people means three output people. Never invent, duplicate, remove, merge, or add extra people.',
+      'For every real person included, preserve each individual face separately. Avoid generic model faces, stock-photo faces, plastic skin, standardized smiles, enlarged eyes, or any face that would not be recognizable side by side with the original.',
       'Preserve all existing accessories exactly as they appear in the source image: same style, material, shape, size, color, and position. Do not restyle, recolor, simplify, remove, or replace real earrings, rings, bracelets, watches, necklaces, piercings, hats, or glasses.',
       'Do not draw, simulate, or include a checkerboard/checkered transparency preview pattern.',
       'Do not include any background, backdrop, card frame, border, logo, watermark, or extra text.',

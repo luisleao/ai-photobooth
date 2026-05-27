@@ -514,6 +514,8 @@ async function generatePackageFromSource({
   const generationParams = {
     participantName: profile.profileName || 'Participante',
     phoneNumber: profile.phoneNumber || '',
+    whatsAppAddress: profile.whatsAppAddress || '',
+    waId: profile.waId || '',
     jerseyNumber: '',
     country: 'Brasil',
     position: 'Craque da torcida',
