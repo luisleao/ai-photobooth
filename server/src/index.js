@@ -28,7 +28,9 @@ const {
   saveMainCompositionConfig,
 } = require('./services/generatedImages');
 const {
+  Timestamp,
   getEventId,
+  getEventRef,
   getFirebasePublicConfig,
   getStorageRoot,
   isFirebaseConfigured,
@@ -165,6 +167,41 @@ app.post('/api/photobooth/manager/main-composition', async (req, res, next) => {
   try {
     const user = await verifyFirebaseIdToken(req);
     res.json(await saveMainCompositionConfig(req.body, user.email || user.uid));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/photobooth/manager/profiles/:profileId/unlimited', async (req, res, next) => {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+    const profileId = cleanString(req.params.profileId, 160);
+    const unlimited = req.body && req.body.unlimited === true;
+
+    if (!profileId) {
+      throw clientError('missing_profile_id', 'Informe o participante.');
+    }
+
+    const profileRef = getEventRef().collection('profiles').doc(profileId);
+    const profileSnap = await profileRef.get();
+
+    if (!profileSnap.exists) {
+      throw clientError('profile_not_found', 'Participante nao encontrado.', 404);
+    }
+
+    const now = Timestamp.now();
+    await profileRef.set({
+      unlimited,
+      unlimitedUpdatedAt: now,
+      unlimitedUpdatedBy: user.email || user.uid,
+      updatedAt: now,
+    }, { merge: true });
+
+    res.json({
+      ok: true,
+      profileId,
+      unlimited,
+    });
   } catch (error) {
     next(error);
   }
@@ -410,9 +447,9 @@ function parseImageDataUrl(value) {
   };
 }
 
-function clientError(code, publicMessage) {
+function clientError(code, publicMessage, statusCode = 400) {
   const error = new Error(publicMessage);
-  error.statusCode = 400;
+  error.statusCode = statusCode;
   error.code = code;
   error.publicMessage = publicMessage;
   return error;

@@ -94,7 +94,7 @@ Acabamento: fundo totalmente transparente e recortado rente a silhueta.
 Analise a imagem anexada.
 Guardrails: isole a pessoa em primeiro plano. Preserve todas as caracteristicas fisicas do rosto e do cabelo. Se a referencia tiver oculos, preserve a armacao amarela e preta com precisao de cores. Se a referencia nao tiver oculos, mantenha o rosto sem oculos.
 Acao: a pessoa deve estar com expressao seria e imponente, como um arbitro de futebol, com o braco esticado para frente segurando um cartao vermelho brilhante em direcao a camera.
-Elementos tematicos: o cartao vermelho deve ter um leve brilho neon. A pessoa veste uma camiseta de jogo do Brasil generica, amarela com detalhes verdes, sem nenhuma marca, sem Nike, sem swoosh, sem escudo oficial, sem patrocinador, sem texto de marca e sem qualquer logo visivel. Se a referencia tiver marca na camiseta, remova e substitua por tecido liso.
+Elementos tematicos: o cartao vermelho deve ser uma placa retangular fisica, solida e totalmente opaca, com preenchimento vermelho vivo uniforme em toda a superficie. O cartao nao pode ser transparente, translúcido, vazado, oco, apenas contorno, vidro, acetato ou com fundo aparecendo através dele. Pode ter um leve brilho neon nas bordas, mas o interior precisa permanecer vermelho preenchido e opaco. A pessoa veste uma camiseta de jogo do Brasil generica, amarela com detalhes verdes, sem nenhuma marca, sem Nike, sem swoosh, sem escudo oficial, sem patrocinador, sem texto de marca e sem qualquer logo visivel. Se a referencia tiver marca na camiseta, remova e substitua por tecido liso.
 Acabamento: contornos nitidos e fundo 100% transparente para uso direto no WhatsApp.
 `.trim(),
   },

@@ -35,6 +35,12 @@ const STICKER_SHEET_SIZE = {
   height: 1800,
   density: 300,
 };
+const STICKER_SHEET_HEADER = {
+  left: 54,
+  top: 34,
+  height: 112,
+  gap: 34,
+};
 const STICKER_SHEET_FILENAME = 'figurinhas-grid-3-5x6.png';
 const STICKER_SHEET_SPEC_IDS = [
   '02-grito-de-gol',
@@ -303,6 +309,7 @@ async function saveGeneratedImage({
     },
   ];
   const stickerSheet = await createStickerSheetIfReady(outputDir, {
+    params,
     queueStickerSheet,
   });
 
@@ -330,6 +337,7 @@ async function createStickerPngBuffer({
 }
 
 async function createStickerSheetIfReady(outputDir, {
+  params = {},
   queueStickerSheet = true,
 } = {}) {
   const stickerSpecs = STICKER_SHEET_SPEC_IDS
@@ -346,16 +354,18 @@ async function createStickerSheetIfReady(outputDir, {
   const columns = 2;
   const rows = Math.ceil(stickerSpecs.length / columns);
   const margin = 54;
+  const gridTop = STICKER_SHEET_HEADER.top + STICKER_SHEET_HEADER.height + STICKER_SHEET_HEADER.gap;
   const columnGap = 34;
   const rowGap = 28;
   const cellWidth = (STICKER_SHEET_SIZE.width - margin * 2 - columnGap * (columns - 1)) / columns;
-  const cellHeight = (STICKER_SHEET_SIZE.height - margin * 2 - rowGap * (rows - 1)) / rows;
+  const cellHeight = (STICKER_SHEET_SIZE.height - gridTop - margin - rowGap * (rows - 1)) / rows;
   const imageSize = Math.floor(Math.min(cellWidth, cellHeight) * 0.98);
+  const headerLayer = createStickerSheetHeaderLayer(params);
   const stickerLayers = await Promise.all(stickerPaths.map(async (filePath, index) => {
     const column = index % columns;
     const row = Math.floor(index / columns);
     const left = Math.round(margin + column * (cellWidth + columnGap) + (cellWidth - imageSize) / 2);
-    const top = Math.round(margin + row * (cellHeight + rowGap) + (cellHeight - imageSize) / 2);
+    const top = Math.round(gridTop + row * (cellHeight + rowGap) + (cellHeight - imageSize) / 2);
     const input = await sharp(filePath)
       .resize(imageSize, imageSize, {
         fit: 'contain',
@@ -381,7 +391,7 @@ async function createStickerSheetIfReady(outputDir, {
       background: { r: 255, g: 255, b: 255, alpha: 1 },
     },
   })
-    .composite(stickerLayers)
+    .composite([headerLayer, ...stickerLayers])
     .withMetadata({ density: STICKER_SHEET_SIZE.density })
     .png({ compressionLevel: 9 })
     .toFile(sheetPath);
@@ -406,11 +416,58 @@ async function createStickerSheetIfReady(outputDir, {
   };
 }
 
+function createStickerSheetHeaderLayer(params = {}) {
+  const width = STICKER_SHEET_SIZE.width - STICKER_SHEET_HEADER.left * 2;
+  const name = truncateLabel(params.participantName || params.profileName || 'Participante', 36);
+  const phone = maskParticipantPhone(params.phoneNumber || params.participantPhone || params.whatsAppAddress || '');
+  const phoneLabel = phone || 'Telefone nao informado';
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${STICKER_SHEET_HEADER.height}" viewBox="0 0 ${width} ${STICKER_SHEET_HEADER.height}">
+      <rect x="0" y="0" width="${width}" height="${STICKER_SHEET_HEADER.height}" rx="0" fill="#000000"/>
+      <text x="${width / 2}" y="46" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700" text-anchor="middle">${escapeXml(name)}</text>
+      <text x="${width / 2}" y="84" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" text-anchor="middle">${escapeXml(phoneLabel)}</text>
+    </svg>
+  `;
+
+  return {
+    input: Buffer.from(svg),
+    left: STICKER_SHEET_HEADER.left,
+    top: STICKER_SHEET_HEADER.top,
+    blend: 'over',
+  };
+}
+
+function truncateLabel(value, maxLength) {
+  const text = String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ');
+
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  return `${text.slice(0, Math.max(0, maxLength - 1)).trim()}...`;
+}
+
+function maskParticipantPhone(value) {
+  const text = String(value || '')
+    .trim()
+    .replace(/^whatsapp:/i, '');
+
+  if (text.length < 9) {
+    return text;
+  }
+
+  return `${text.slice(0, -8)}****-${text.slice(-4)}`;
+}
+
 async function ensureStickerSheetForRun(runId, {
+  params = {},
   queueStickerSheet = true,
 } = {}) {
   const outputDir = getGeneratedRunDirectory(runId);
   const stickerSheet = await createStickerSheetIfReady(outputDir, {
+    params,
     queueStickerSheet,
   });
 

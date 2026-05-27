@@ -513,6 +513,7 @@ async function generatePackageFromSource({
 }) {
   const generationParams = {
     participantName: profile.profileName || 'Participante',
+    phoneNumber: profile.phoneNumber || '',
     jerseyNumber: '',
     country: 'Brasil',
     position: 'Craque da torcida',
@@ -594,6 +595,7 @@ async function generatePackageFromSource({
 
   const failed = stickerResults.filter((item) => !item.ok);
   const stickerSheet = await ensureStickerSheetForRun(runId, {
+    params: generationParams,
     queueStickerSheet: false,
   });
   const stickerSheetUpload = await uploadFileToStorage({

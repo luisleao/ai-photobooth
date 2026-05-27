@@ -203,7 +203,7 @@
 
       .participant-row {
         display: grid;
-        grid-template-columns: minmax(0, 1.3fr) repeat(5, minmax(72px, 0.4fr));
+        grid-template-columns: minmax(0, 1.3fr) repeat(5, minmax(72px, 0.4fr)) minmax(116px, 0.54fr);
         gap: 10px;
         align-items: center;
         border: 1px solid var(--line);
@@ -235,6 +235,17 @@
       .participant-stat span {
         display: block;
         color: var(--muted);
+        font-size: 12px;
+      }
+
+      .participant-actions {
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .participant-actions button {
+        width: 100%;
+        padding: 9px 10px;
         font-size: 12px;
       }
 
@@ -1259,9 +1270,29 @@
             ${formatNumber(prints.stickersPrinted)}
             <span>stickers</span>
           </div>
+          <div class="participant-actions">
+            <button
+              type="button"
+              class="${item.unlimited === true ? 'warning' : 'success'}"
+              data-action="toggle-unlimited"
+              aria-pressed="${item.unlimited === true ? 'true' : 'false'}"
+            >
+              ${item.unlimited === true ? 'Desativar ilimitado' : 'Ativar ilimitado'}
+            </button>
+          </div>
         `;
+        const unlimitedButton = article.querySelector('[data-action="toggle-unlimited"]');
+
+        unlimitedButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          toggleProfileUnlimited(profileId, item.unlimited !== true);
+        });
         article.addEventListener('click', () => selectProfileImages(profileId, name, item.phoneNumber || profileId));
         article.addEventListener('keydown', (event) => {
+          if (event.target.closest('button')) {
+            return;
+          }
+
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
             selectProfileImages(profileId, name, item.phoneNumber || profileId);
@@ -1269,6 +1300,13 @@
         });
 
         return article;
+      }
+
+      async function toggleProfileUnlimited(profileId, unlimited) {
+        await apiPost(
+          `/api/photobooth/manager/profiles/${encodeURIComponent(profileId)}/unlimited`,
+          { unlimited },
+        );
       }
 
       function selectProfileImages(profileId, name, phone) {
