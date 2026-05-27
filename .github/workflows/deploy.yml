@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_RESOURCE_GROUP: rg-ai-photobooth
+  AZURE_RESOURCE_GROUP: rg-ai-photobooth-lleao
   AZURE_LOCATION: eastus
   ACR_NAME: aiphotobooth
   CONTAINER_APP_NAME: ai-photobooth
