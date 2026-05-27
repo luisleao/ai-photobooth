@@ -37,7 +37,6 @@ const MAIN_PRINT_WIDTH = 1181;
 const MAIN_PRINT_HEIGHT = 1772;
 const MIN_SUBJECT_SIZE = 100;
 const SUBJECT_ASPECT_RATIO = 2 / 3;
-const SAVED_COMPOSITION_KEY = 'ai-photobooth.main-composition';
 const STICKER_SHEET_SPEC = {
   id: STICKER_SHEET_ID,
   title: 'Sticker sheet 3.5x6',
@@ -477,28 +476,57 @@ function applyMainCompositionConfig(config) {
     compositionOverlay.src = `${config.overlayImageUrl}?t=${Date.now()}`;
   }
 
-  applyCompositionToInputs(readSavedComposition() || state.mainCompositionDefaults);
+  applyCompositionToInputs(state.mainCompositionDefaults);
 }
 
-function readSavedComposition() {
+async function saveCompositionSettings() {
+  const layout = readCompositionInputs();
+
+  saveCompositionButton.disabled = true;
+  setMessage('Salvando ajuste visual no Firestore.');
+
   try {
-    const parsed = JSON.parse(localStorage.getItem(SAVED_COMPOSITION_KEY));
-    return parsed && typeof parsed === 'object' ? normalizeComposition(parsed) : null;
+    const response = await fetch('/api/photobooth/main-composition', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(layout),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Falha ao salvar ajuste visual.');
+    }
+
+    applyMainCompositionConfig(data);
+    setMessage('Ajuste visual salvo no Firestore para as proximas geracoes.');
   } catch (error) {
-    return null;
+    setMessage(error.message || 'Falha ao salvar ajuste visual.');
+  } finally {
+    saveCompositionButton.disabled = state.isGenerating;
   }
 }
 
-function saveCompositionSettings() {
-  const layout = readCompositionInputs();
-  localStorage.setItem(SAVED_COMPOSITION_KEY, JSON.stringify(layout));
-  setMessage('Ajuste visual salvo para as proximas geracoes neste navegador.');
-}
+async function resetCompositionSettings() {
+  resetCompositionButton.disabled = true;
+  setMessage('Recarregando ajuste visual do Firestore.');
 
-function resetCompositionSettings() {
-  localStorage.removeItem(SAVED_COMPOSITION_KEY);
-  applyCompositionToInputs(state.mainCompositionDefaults);
-  setMessage('Ajuste visual restaurado para os valores do .env.');
+  try {
+    const response = await fetch('/api/photobooth/main-composition');
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Falha ao recarregar ajuste visual.');
+    }
+
+    applyMainCompositionConfig(data);
+    setMessage('Ajuste visual recarregado do Firestore.');
+  } catch (error) {
+    setMessage(error.message || 'Falha ao recarregar ajuste visual.');
+  } finally {
+    resetCompositionButton.disabled = state.isGenerating;
+  }
 }
 
 async function clearGeneratedImages() {

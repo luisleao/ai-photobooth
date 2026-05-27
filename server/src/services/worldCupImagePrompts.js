@@ -35,7 +35,7 @@ Analise a imagem fornecida.
 Guardrails: foque na pessoa, ou grupo, em primeiro plano. A semelhanca facial, estrutura do rosto e caracteristicas unicas devem ser preservadas fielmente. Se a referencia tiver oculos de grau, mantenha intacto o formato e as cores amarelo e preto. Se a referencia nao tiver oculos, nao adicione oculos, armacao ou lente.
 Acao: transforme a foto em uma caricatura 3D expressiva. Mude a postura para ansiedade maxima: olhos arregalados, gotas de suor na testa e as maos trazidas ao rosto roendo as unhas de forma exagerada.
 Elementos tematicos: vista a pessoa com a camisa amarela da selecao ou coloque uma faixa de suor escrita "BRASIL" na cabeca.
-Acabamento: fundo completamente transparente, isolando apenas os personagens para exportacao direta como adesivo.
+Acabamento: fundo completamente transparente, isolando apenas os personagens para exportacao direta como PNG transparente, sem borda ou contorno externo.
 `.trim(),
   },
   {
@@ -64,7 +64,7 @@ Analise a selfie fornecida.
 Guardrails: mantenha a expressao original, os tracos faciais e a pose exata da pessoa ou grupo existente na referencia. Se a referencia tiver oculos, replique a armacao amarela e preta com maxima fidelidade. Se a referencia nao tiver oculos, nao adicione oculos. Nao adicione novas pessoas, rostos, mascotes, bonecos humanos ou personagens extras.
 Acao e elementos tematicos: coloque uma coroa de rei da torcida sobre a cabeca da pessoa existente, ou sobre cada pessoa existente em primeiro plano quando houver grupo real. A coroa deve ser grande, divertida, verde e amarela, com detalhes dourados e pequenas estrelas, sem parecer uma taca ou chapeu gigante.
 Enquadramento: a pessoa inteira e a coroa devem aparecer completamente dentro da imagem, com margem transparente ao redor. Nao corte cabeca, coroa, bracos, maos, ombros ou qualquer parte importante da silhueta.
-Acabamento: remova totalmente o cenario original e exporte com fundo transparente. Adicione uma fina borda branca apenas ao redor do contorno da silhueta, incluindo somente as pessoas reais da referencia e as coroas, dando aspecto de figurinha colante.
+Acabamento: remova totalmente o cenario original e exporte com fundo transparente. Nao adicione borda, stroke, outline, halo, brilho externo ou contorno branco ao redor da silhueta.
 `.trim(),
   },
   {
@@ -109,7 +109,7 @@ Analise a selfie fornecida.
 Guardrails: mantenha a identidade facial e o cabelo. Se a referencia tiver oculos com armacao amarela e preta, preserve esses oculos sem alterar suas cores. Se a referencia nao tiver oculos, nao adicione oculos, armacao ou lente.
 Acao: mostre a pessoa com expressao de choro exagerada, lagrimas escorrendo, segurando um lencinho branco perto do rosto como se estivesse enxugando as lagrimas apos o jogo. O lencinho deve ser simples, macio e claramente um tecido pequeno, nao um instrumento musical, nao uma corneta e nao uma vuvuzela.
 Elementos tematicos: lencinho branco levemente amassado, com um pequeno detalhe verde e amarelo discreto na borda. Rosto com pintura da bandeira do Brasil levemente borrada pelas lagrimas.
-Acabamento: cores um pouco mais frias e dessaturadas para tom dramatico. Fundo completamente transparente, com leve borda branca ao redor do desenho.
+Acabamento: cores um pouco mais frias e dessaturadas para tom dramatico. Fundo completamente transparente, sem borda branca, sem stroke, sem outline e sem halo ao redor do desenho.
 `.trim(),
   },
   {
@@ -235,7 +235,9 @@ function buildPromptForSpec(spec, params) {
   return `
 Analise a imagem fornecida como referencia principal. Ela vem da primeira etapa da geracao e deve mostrar a pessoa usando camiseta de jogo do Brasil.
 
-Estilo base obrigatorio para todas as figurinhas secundarias: use exatamente a mesma linguagem visual de "O Grito de Gol" e "O Sufoco dos Penaltis": caricatura 3D expressiva tipo Pixar, emocional, com formas arredondadas, olhos expressivos quando fizer sentido, pele e cabelo estilizados, cores fortes, contornos limpos, acabamento polido de sticker e personagem isolado. Esta direcao prevalece sobre qualquer estilo especifico citado abaixo.
+Estilo base obrigatorio para todas as figurinhas secundarias: use exatamente a mesma linguagem visual de "O Grito de Gol" e "O Sufoco dos Penaltis": caricatura 3D expressiva tipo Pixar, emocional, com formas arredondadas, olhos expressivos quando fizer sentido, pele e cabelo estilizados, cores fortes, contornos internos limpos e personagem isolado. Esta direcao prevalece sobre qualquer estilo especifico citado abaixo.
+
+Regra global de borda: nao crie borda automatica ao redor da pessoa, nao crie stroke branco, outline colorido, halo, brilho externo, recorte adesivado, margem branca grossa, sombra projetada ou qualquer contorno externo envolvendo a silhueta. O personagem deve terminar diretamente no canal alfa transparente, sem moldura ou borda visual. Se algum prompt especifico mencionar "figurinha", interprete apenas como PNG transparente para WhatsApp, nao como adesivo com borda.
 
 Guardrails globais: preserve a identidade facial, etnia, formato do rosto, proporcoes faciais, cabelo, barba e aderecos reconheciveis da referencia antes de aplicar qualquer expressao ou gesto. Nao mude idade aparente, nariz, boca, olhos, sobrancelhas, linha do cabelo, tom de pele ou caracteristicas unicas. Acessorios existentes devem manter estilo, material, cor, formato, tamanho e posicao com maxima fidelidade; nao redesenhe brincos, pulseiras, relogios, colares, piercings, bones, chapeus ou oculos reais em outro estilo. Nao adicione acessorios que nao existam na referencia, exceto quando a direcao especifica da figurinha pedir explicitamente esse acessorio tematico. Se a pessoa nao usa oculos na referencia, nao invente oculos, salvo na figurinha "O Hexa Vem", onde o prompt exige o oculos em formato de HEXA. Mantenha a camiseta de jogo do Brasil visivel, preferencialmente amarela com detalhes verdes, sempre generica e sem marcas: sem Nike, sem swoosh, sem escudos oficiais, sem patrocinadores, sem textos de marca e sem qualquer logo visivel. Se houver oculos de grau amarelos e pretos na referencia, preserve a paleta e formato, exceto quando a direcao especifica pedir substituicao. Nao adicione novas pessoas, rostos, corpos, personagens humanos, mascotes ou figurantes. Use somente a pessoa ou grupo que ja existe na referencia.
 
@@ -247,7 +249,7 @@ Anatomia global das maos: sempre que as maos aparecerem, a mao esquerda e a mao 
 
 Consistencia obrigatoria: nao mude para fotorrealismo, vetor flat, anime, 2D cartoon, pintura, render realista ou qualquer outro estilo. Todas as secundarias devem parecer parte do mesmo pacote visual.
 
-Enquadramento obrigatorio: mantenha a figurinha inteira dentro do canvas com margem transparente ao redor. Nao corte cabeca, chapeu/coroa, bracos, maos, texto, objetos tematicos ou contorno branco.
+Enquadramento obrigatorio: mantenha a figurinha inteira dentro do canvas com margem transparente ao redor. Nao corte cabeca, chapeu/coroa, bracos, maos, texto ou objetos tematicos.
 
 Direcao especifica para "${spec.title}":
 ${prompt}

@@ -210,6 +210,18 @@
         border-radius: 8px;
         padding: 10px 12px;
         background: var(--panel);
+        cursor: pointer;
+      }
+
+      .participant-row:hover,
+      .participant-row:focus-visible {
+        border-color: var(--blue);
+        outline: none;
+      }
+
+      .participant-row.active {
+        border-color: var(--blue);
+        box-shadow: 0 0 0 2px rgb(23 79 138 / 14%);
       }
 
       .participant-row strong {
@@ -224,6 +236,19 @@
         display: block;
         color: var(--muted);
         font-size: 12px;
+      }
+
+      .scope-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      .scope-toolbar small {
+        width: 100%;
+        text-align: right;
       }
 
       .grid {
@@ -360,6 +385,177 @@
         transform: translateY(120%);
       }
 
+      .composition-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: rgba(6, 16, 30, 0.82);
+      }
+
+      .composition-panel {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        gap: 16px;
+        width: min(96vw, 980px);
+        max-height: 94vh;
+        border-radius: 8px;
+        padding: 18px;
+        background: var(--panel);
+        overflow: auto;
+      }
+
+      .composition-panel-header,
+      .composition-panel-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .composition-layout {
+        display: grid;
+        grid-template-columns: minmax(280px, 420px) minmax(240px, 1fr);
+        gap: 18px;
+        align-items: start;
+      }
+
+      .composition-stage {
+        position: relative;
+        width: min(100%, 420px);
+        aspect-ratio: 1181 / 1772;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #101820;
+        touch-action: none;
+        user-select: none;
+      }
+
+      .composition-layer,
+      .composition-subject,
+      .composition-control {
+        position: absolute;
+      }
+
+      .composition-layer {
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: fill;
+        pointer-events: none;
+      }
+
+      .composition-subject {
+        z-index: 2;
+        overflow: hidden;
+        pointer-events: none;
+      }
+
+      .composition-subject img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      .composition-overlay {
+        z-index: 3;
+      }
+
+      .composition-control {
+        z-index: 4;
+        border: 2px solid rgb(189 39 52 / 92%);
+        background: rgb(255 255 255 / 10%);
+        cursor: move;
+        touch-action: none;
+      }
+
+      .composition-handle {
+        position: absolute;
+        z-index: 5;
+        width: 15px;
+        height: 15px;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        background: var(--red);
+        box-shadow: 0 2px 8px rgb(21 24 32 / 28%);
+      }
+
+      .composition-handle[data-handle="n"],
+      .composition-handle[data-handle="s"] {
+        left: 50%;
+        transform: translateX(-50%);
+        cursor: ns-resize;
+      }
+
+      .composition-handle[data-handle="e"],
+      .composition-handle[data-handle="w"] {
+        top: 50%;
+        transform: translateY(-50%);
+        cursor: ew-resize;
+      }
+
+      .composition-handle[data-handle="n"] {
+        top: -9px;
+      }
+
+      .composition-handle[data-handle="e"] {
+        right: -9px;
+      }
+
+      .composition-handle[data-handle="s"] {
+        bottom: -9px;
+      }
+
+      .composition-handle[data-handle="w"] {
+        left: -9px;
+      }
+
+      .composition-handle[data-handle="ne"] {
+        top: -9px;
+        right: -9px;
+        cursor: nesw-resize;
+      }
+
+      .composition-handle[data-handle="se"] {
+        right: -9px;
+        bottom: -9px;
+        cursor: nwse-resize;
+      }
+
+      .composition-handle[data-handle="sw"] {
+        bottom: -9px;
+        left: -9px;
+        cursor: nesw-resize;
+      }
+
+      .composition-handle[data-handle="nw"] {
+        top: -9px;
+        left: -9px;
+        cursor: nwse-resize;
+      }
+
+      .composition-fields {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .composition-field {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .composition-message {
+        min-height: 20px;
+        color: var(--muted);
+      }
+
       .actions {
         display: flex;
         flex-wrap: wrap;
@@ -404,6 +600,10 @@
 
         .participant-stat {
           text-align: left;
+        }
+
+        .composition-layout {
+          grid-template-columns: 1fr;
         }
       }
     </style>
@@ -464,7 +664,10 @@
         <div class="tab-panel" id="images-tab">
           <div class="toolbar">
             <h2>Imagens</h2>
-            <small id="images-count">0 imagem(ns)</small>
+            <div class="scope-toolbar">
+              <small id="images-count">0 imagem(ns)</small>
+              <button class="secondary hidden" id="clear-profile-filter" type="button">Ver todas</button>
+            </div>
           </div>
           <div class="grid" id="images"></div>
         </div>
@@ -516,7 +719,85 @@
       </div>
     </div>
 
+    <div class="composition-modal hidden" id="composition-modal" role="dialog" aria-modal="true" aria-label="Ajustar imagem principal">
+      <section class="composition-panel">
+        <div class="composition-panel-header">
+          <div>
+            <h2 id="composition-title">Ajustar principal</h2>
+            <p class="muted" id="composition-subtitle"></p>
+          </div>
+          <button class="secondary" id="composition-close" type="button">Fechar</button>
+        </div>
+
+        <div class="composition-layout">
+          <div class="composition-stage" id="composition-stage">
+            <img class="composition-layer" id="composition-background" alt="" aria-hidden="true" />
+            <div class="composition-subject" id="composition-subject">
+              <img id="composition-subject-image" alt="" />
+            </div>
+            <img class="composition-layer composition-overlay" id="composition-overlay" alt="" aria-hidden="true" />
+            <div class="composition-control" id="composition-control" aria-label="Area da imagem principal">
+              <span class="composition-handle" data-handle="n" aria-hidden="true"></span>
+              <span class="composition-handle" data-handle="e" aria-hidden="true"></span>
+              <span class="composition-handle" data-handle="s" aria-hidden="true"></span>
+              <span class="composition-handle" data-handle="w" aria-hidden="true"></span>
+              <span class="composition-handle" data-handle="ne" aria-hidden="true"></span>
+              <span class="composition-handle" data-handle="se" aria-hidden="true"></span>
+              <span class="composition-handle" data-handle="sw" aria-hidden="true"></span>
+              <span class="composition-handle" data-handle="nw" aria-hidden="true"></span>
+            </div>
+          </div>
+
+          <div>
+            <div class="composition-fields">
+              <label class="composition-field">
+                Fundo
+                <input id="composition-background-color" type="text" maxlength="16" />
+              </label>
+              <label class="composition-field">
+                Ajuste
+                <select id="composition-fit">
+                  <option value="contain">contain</option>
+                  <option value="cover">cover</option>
+                  <option value="fill">fill</option>
+                </select>
+              </label>
+              <label class="composition-field">
+                X
+                <input id="composition-left" type="number" step="1" />
+              </label>
+              <label class="composition-field">
+                Y
+                <input id="composition-top" type="number" step="1" />
+              </label>
+              <label class="composition-field">
+                Largura
+                <input id="composition-width" type="number" min="100" step="1" />
+              </label>
+              <label class="composition-field">
+                Altura
+                <input id="composition-height" type="number" min="100" step="1" />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="composition-panel-actions">
+          <p class="composition-message" id="composition-message"></p>
+          <div class="actions">
+            <button class="secondary" id="composition-save-default" type="button">Salvar como padrão</button>
+            <button class="success" id="composition-regenerate" type="button">Regerar principal</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
     <script>
+      const MAIN_PRINT_WIDTH = 1181;
+      const MAIN_PRINT_HEIGHT = 1772;
+      const MIN_SUBJECT_SIZE = 100;
+      const SUBJECT_ASPECT_RATIO = 2 / 3;
+
       const state = {
         eventId: '',
         db: null,
@@ -528,6 +809,18 @@
         printRows: [],
         printStatusFilter: 'open',
         zoomSticker: null,
+        selectedProfile: null,
+        mainCompositionConfig: null,
+        mainCompositionDefaults: {
+          background: '#000d25',
+          imageLeft: 90,
+          imageTop: 82,
+          imageWidth: 990,
+          imageHeight: 1485,
+          imageFit: 'contain',
+        },
+        compositionEditor: null,
+        compositionDrag: null,
       };
 
       const authPanel = document.getElementById('auth-panel');
@@ -539,6 +832,7 @@
       const stickerPrintsEl = document.getElementById('sticker-prints');
       const profilesCount = document.getElementById('profiles-count');
       const imagesCount = document.getElementById('images-count');
+      const clearProfileFilter = document.getElementById('clear-profile-filter');
       const mainPrintCount = document.getElementById('main-print-count');
       const stickerPrintCount = document.getElementById('sticker-print-count');
       const printStatusFilter = document.getElementById('print-status-filter');
@@ -552,6 +846,27 @@
       const zoomClose = document.getElementById('zoom-close');
       const zoomResend = document.getElementById('zoom-resend');
       const logoutButton = document.getElementById('logout-button');
+      const compositionModal = document.getElementById('composition-modal');
+      const compositionTitle = document.getElementById('composition-title');
+      const compositionSubtitle = document.getElementById('composition-subtitle');
+      const compositionClose = document.getElementById('composition-close');
+      const compositionStage = document.getElementById('composition-stage');
+      const compositionBackground = document.getElementById('composition-background');
+      const compositionOverlay = document.getElementById('composition-overlay');
+      const compositionSubject = document.getElementById('composition-subject');
+      const compositionSubjectImage = document.getElementById('composition-subject-image');
+      const compositionControl = document.getElementById('composition-control');
+      const compositionMessage = document.getElementById('composition-message');
+      const compositionRegenerate = document.getElementById('composition-regenerate');
+      const compositionSaveDefault = document.getElementById('composition-save-default');
+      const compositionInputs = {
+        background: document.getElementById('composition-background-color'),
+        imageLeft: document.getElementById('composition-left'),
+        imageTop: document.getElementById('composition-top'),
+        imageWidth: document.getElementById('composition-width'),
+        imageHeight: document.getElementById('composition-height'),
+        imageFit: document.getElementById('composition-fit'),
+      };
 
       boot();
 
@@ -560,6 +875,7 @@
         const config = await configResponse.json();
 
         state.eventId = config.eventId;
+        applyMainCompositionConfig(config.mainComposition);
         document.getElementById('event-label').textContent = config.firestoreRoot;
         if (config.printLimitPerProfile !== null && config.printLimitPerProfile !== undefined) {
           metricPrintLimit.textContent = formatNumber(config.printLimitPerProfile);
@@ -580,16 +896,37 @@
           state.printStatusFilter = printStatusFilter.value;
           renderPrintLists();
         });
+        clearProfileFilter.addEventListener('click', clearSelectedProfile);
         zoomClose.addEventListener('click', closeStickerZoom);
         zoomResend.addEventListener('click', resendZoomSticker);
+        compositionClose.addEventListener('click', closeCompositionEditor);
+        compositionRegenerate.addEventListener('click', regenerateCompositionImage);
+        compositionSaveDefault.addEventListener('click', saveCompositionAsDefault);
+        compositionControl.addEventListener('pointerdown', startCompositionDrag);
+        Object.entries(compositionInputs).forEach(([name, input]) => {
+          input.addEventListener('input', () => syncCompositionFromInputs(name));
+        });
+        window.addEventListener('resize', () => {
+          if (state.compositionEditor) {
+            renderCompositionBox(readCompositionInputs());
+          }
+        });
         zoomModal.addEventListener('click', (event) => {
           if (event.target === zoomModal) {
             closeStickerZoom();
           }
         });
+        compositionModal.addEventListener('click', (event) => {
+          if (event.target === compositionModal) {
+            closeCompositionEditor();
+          }
+        });
         document.addEventListener('keydown', (event) => {
           if (event.key === 'Escape' && !zoomModal.classList.contains('hidden')) {
             closeStickerZoom();
+          }
+          if (event.key === 'Escape' && !compositionModal.classList.contains('hidden')) {
+            closeCompositionEditor();
           }
         });
         document.querySelectorAll('[data-tab]').forEach((button) => {
@@ -663,6 +1000,10 @@
               ? '-'
               : formatNumber(item.printLimitPerProfile);
             metricGenerationAverage.textContent = formatAverageDuration(generation);
+
+            if (item.mainComposition) {
+              state.mainCompositionDefaults = normalizeComposition(item.mainComposition);
+            }
           });
       }
 
@@ -697,25 +1038,50 @@
           state.imageUnsubscribe();
         }
 
-        state.imageUnsubscribe = state.db
+        let query = state.db
           .collection('events')
           .doc(state.eventId)
-          .collection('images')
-          .orderBy('createdAt', 'desc')
-          .limit(100)
-          .onSnapshot((snapshot) => {
-            imagesCount.textContent = `${snapshot.size} imagem(ns)`;
-            imagesEl.innerHTML = '';
+          .collection('images');
 
-            if (!snapshot.size) {
-              imagesEl.innerHTML = '<div class="empty">Nenhuma imagem encontrada.</div>';
-              return;
-            }
+        if (state.selectedProfile) {
+          query = query.where('profileId', '==', state.selectedProfile.id);
+        } else {
+          query = query.orderBy('createdAt', 'desc').limit(100);
+        }
 
-            snapshot.forEach((doc) => imagesEl.appendChild(renderImage(doc.id, doc.data())));
-          }, (error) => {
-            imagesEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
-          });
+        state.imageUnsubscribe = query.onSnapshot((snapshot) => {
+          const rows = [];
+          snapshot.forEach((doc) => rows.push({ id: doc.id, data: doc.data() || {} }));
+
+          if (state.selectedProfile) {
+            rows.sort((a, b) => timestampToMillis(b.data.createdAt) - timestampToMillis(a.data.createdAt));
+          }
+
+          renderImages(rows);
+        }, (error) => {
+          imagesEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+        });
+      }
+
+      function renderImages(rows) {
+        const scopedName = state.selectedProfile ? state.selectedProfile.name : '';
+        const scopedPhone = state.selectedProfile && state.selectedProfile.phone
+          ? ` ${maskPhone(state.selectedProfile.phone)}`
+          : '';
+        imagesCount.textContent = state.selectedProfile
+          ? `${rows.length} imagem(ns) de ${scopedName}${scopedPhone}`
+          : `${rows.length} imagem(ns)`;
+        clearProfileFilter.classList.toggle('hidden', !state.selectedProfile);
+        imagesEl.innerHTML = '';
+
+        if (!rows.length) {
+          imagesEl.innerHTML = state.selectedProfile
+            ? '<div class="empty">Nenhuma imagem encontrada para este participante.</div>'
+            : '<div class="empty">Nenhuma imagem encontrada.</div>';
+          return;
+        }
+
+        rows.forEach((row) => imagesEl.appendChild(renderImage(row.id, row.data)));
       }
 
       function listenPrints() {
@@ -787,6 +1153,7 @@
         const article = document.createElement('article');
         article.className = 'package';
         const mainUrl = getMainImageUrl(item);
+        const subjectUrl = getMainSubjectUrl(item);
         const stickerItems = getStickerItems(item);
         const participantName = item.profile?.profileName || 'Participante';
         const phone = item.profile?.phoneNumber || '';
@@ -824,6 +1191,7 @@
               `).join('')}
             </div>
             <div class="actions">
+              <button type="button" class="secondary" data-action="adjust-main" ${subjectUrl ? '' : 'disabled'}>Ajustar principal</button>
               <button type="button" data-action="regenerate">Regerar</button>
               <button type="button" class="success" data-action="print-stickers">Imprimir stickers</button>
               <button type="button" class="secondary" data-action="print-main">Reimprimir principal</button>
@@ -838,6 +1206,10 @@
             outputId: button.dataset.zoomOutputId,
           }));
         });
+        const adjustButton = article.querySelector('[data-action="adjust-main"]');
+        if (adjustButton && subjectUrl) {
+          adjustButton.addEventListener('click', () => openCompositionEditor(imageId, item));
+        }
         article.querySelector('[data-action="regenerate"]').addEventListener('click', () => regenerateImage(imageId));
         article.querySelector('[data-action="print-stickers"]').addEventListener('click', () => requestPrint(imageId, 'stickers'));
         article.querySelector('[data-action="print-main"]').addEventListener('click', () => requestPrint(imageId, 'main'));
@@ -848,11 +1220,19 @@
       function renderProfile(profileId, item) {
         const article = document.createElement('article');
         article.className = 'participant-row';
+        article.dataset.profileId = profileId;
+        article.tabIndex = 0;
+        article.setAttribute('role', 'button');
         const stats = item.stats || {};
         const prints = stats.prints || {};
         const generation = stats.generation || {};
         const name = item.profileName || item.whatsappProfile?.profileName || 'Participante';
         const unlimited = item.unlimited === true ? ' · ilimitado' : '';
+        const isSelected = state.selectedProfile && state.selectedProfile.id === profileId;
+
+        if (isSelected) {
+          article.classList.add('active');
+        }
 
         article.innerHTML = `
           <div>
@@ -880,8 +1260,46 @@
             <span>stickers</span>
           </div>
         `;
+        article.addEventListener('click', () => selectProfileImages(profileId, name, item.phoneNumber || profileId));
+        article.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            selectProfileImages(profileId, name, item.phoneNumber || profileId);
+          }
+        });
 
         return article;
+      }
+
+      function selectProfileImages(profileId, name, phone) {
+        state.selectedProfile = {
+          id: profileId,
+          name: name || 'Participante',
+          phone: phone || '',
+        };
+        setActiveTab('images');
+        listenImages();
+        refreshProfileSelection();
+      }
+
+      function clearSelectedProfile() {
+        state.selectedProfile = null;
+        listenImages();
+        refreshProfileSelection();
+      }
+
+      function refreshProfileSelection() {
+        profilesEl.querySelectorAll('.participant-row').forEach((row) => {
+          row.classList.remove('active');
+        });
+
+        if (!state.selectedProfile) {
+          return;
+        }
+
+        profilesEl.querySelectorAll('.participant-row').forEach((row) => {
+          row.classList.toggle('active', row.dataset.profileId === state.selectedProfile.id);
+        });
       }
 
       function renderPrintItem(printId, item) {
@@ -924,6 +1342,296 @@
 
       async function updatePrintStatus(printId, status) {
         await apiPost(`/api/photobooth/manager/prints/${encodeURIComponent(printId)}/status`, { status });
+      }
+
+      function applyMainCompositionConfig(config) {
+        state.mainCompositionConfig = config || state.mainCompositionConfig || {};
+
+        if (config && config.defaults) {
+          state.mainCompositionDefaults = normalizeComposition(config.defaults);
+        }
+
+        const backgroundUrl = state.mainCompositionConfig?.backgroundImageUrl || '/api/photobooth/main-card-background';
+        const overlayUrl = state.mainCompositionConfig?.overlayImageUrl || '/api/photobooth/main-card-overlay';
+        compositionBackground.src = `${backgroundUrl}?t=${Date.now()}`;
+        compositionOverlay.src = `${overlayUrl}?t=${Date.now()}`;
+      }
+
+      function openCompositionEditor(imageId, item) {
+        const subjectUrl = getMainSubjectUrl(item);
+
+        if (!subjectUrl) {
+          alert('Esta imagem ainda nao possui subject-png para reposicionamento.');
+          return;
+        }
+
+        const participantName = item.profile?.profileName || 'Participante';
+        const layout = normalizeComposition(getImageComposition(item));
+
+        state.compositionEditor = {
+          imageId,
+          item,
+        };
+        compositionTitle.textContent = 'Ajustar principal';
+        compositionSubtitle.textContent = `${participantName} · ${imageId}`;
+        compositionSubjectImage.src = subjectUrl;
+        compositionMessage.textContent = '';
+        compositionRegenerate.disabled = false;
+        compositionSaveDefault.disabled = false;
+        compositionModal.classList.remove('hidden');
+        applyCompositionToInputs(layout);
+        requestAnimationFrame(() => renderCompositionBox(readCompositionInputs()));
+      }
+
+      function closeCompositionEditor() {
+        compositionModal.classList.add('hidden');
+        compositionSubjectImage.removeAttribute('src');
+        compositionMessage.textContent = '';
+        state.compositionEditor = null;
+        state.compositionDrag = null;
+        window.removeEventListener('pointermove', moveCompositionDrag);
+        window.removeEventListener('pointerup', stopCompositionDrag);
+      }
+
+      async function regenerateCompositionImage() {
+        if (!state.compositionEditor) {
+          return;
+        }
+
+        const layout = readCompositionInputs();
+        compositionRegenerate.disabled = true;
+        compositionMessage.textContent = 'Recompondo imagem principal.';
+
+        try {
+          await apiPost(
+            `/api/photobooth/manager/images/${encodeURIComponent(state.compositionEditor.imageId)}/main-composition/regenerate`,
+            { composition: layout },
+          );
+          compositionMessage.textContent = 'Principal recomposta e enviada por WhatsApp.';
+        } catch (error) {
+          compositionMessage.textContent = error.message || 'Falha ao recompor principal.';
+        } finally {
+          compositionRegenerate.disabled = false;
+        }
+      }
+
+      async function saveCompositionAsDefault() {
+        const layout = readCompositionInputs();
+        compositionSaveDefault.disabled = true;
+        compositionMessage.textContent = 'Salvando ajuste como padrao.';
+
+        try {
+          const response = await apiPost('/api/photobooth/manager/main-composition', layout);
+          applyMainCompositionConfig(response);
+          compositionMessage.textContent = 'Ajuste salvo no Firestore para as proximas imagens.';
+        } catch (error) {
+          compositionMessage.textContent = error.message || 'Falha ao salvar padrao.';
+        } finally {
+          compositionSaveDefault.disabled = false;
+        }
+      }
+
+      function applyCompositionToInputs(layout) {
+        const normalized = normalizeComposition(layout);
+
+        compositionInputs.background.value = normalized.background;
+        compositionInputs.imageLeft.value = normalized.imageLeft;
+        compositionInputs.imageTop.value = normalized.imageTop;
+        compositionInputs.imageWidth.value = normalized.imageWidth;
+        compositionInputs.imageHeight.value = normalized.imageHeight;
+        compositionInputs.imageFit.value = normalized.imageFit;
+        renderCompositionBox(normalized);
+      }
+
+      function syncCompositionFromInputs(inputName = '') {
+        applyCompositionToInputs(normalizeComposition({
+          background: compositionInputs.background.value,
+          imageLeft: compositionInputs.imageLeft.value,
+          imageTop: compositionInputs.imageTop.value,
+          imageWidth: compositionInputs.imageWidth.value,
+          imageHeight: compositionInputs.imageHeight.value,
+          imageFit: compositionInputs.imageFit.value,
+        }, inputName === 'imageHeight' ? 'height' : 'width'));
+      }
+
+      function readCompositionInputs() {
+        return normalizeComposition({
+          background: compositionInputs.background.value,
+          imageLeft: compositionInputs.imageLeft.value,
+          imageTop: compositionInputs.imageTop.value,
+          imageWidth: compositionInputs.imageWidth.value,
+          imageHeight: compositionInputs.imageHeight.value,
+          imageFit: compositionInputs.imageFit.value,
+        });
+      }
+
+      function normalizeComposition(value = {}, basis = 'width') {
+        let imageWidth = readNumber(value.imageWidth, state.mainCompositionDefaults.imageWidth || 990);
+        let imageHeight = readNumber(value.imageHeight, state.mainCompositionDefaults.imageHeight || 1485);
+
+        if (basis === 'height') {
+          imageHeight = clamp(imageHeight, Math.round(MIN_SUBJECT_SIZE / SUBJECT_ASPECT_RATIO), MAIN_PRINT_HEIGHT);
+          imageWidth = Math.round(imageHeight * SUBJECT_ASPECT_RATIO);
+        } else {
+          imageWidth = clamp(imageWidth, MIN_SUBJECT_SIZE, MAIN_PRINT_WIDTH);
+          imageHeight = Math.round(imageWidth / SUBJECT_ASPECT_RATIO);
+        }
+
+        if (imageHeight > MAIN_PRINT_HEIGHT) {
+          imageHeight = MAIN_PRINT_HEIGHT;
+          imageWidth = Math.round(imageHeight * SUBJECT_ASPECT_RATIO);
+        }
+
+        if (imageWidth > MAIN_PRINT_WIDTH) {
+          imageWidth = MAIN_PRINT_WIDTH;
+          imageHeight = Math.round(imageWidth / SUBJECT_ASPECT_RATIO);
+        }
+
+        const imageLeft = clamp(readNumber(value.imageLeft, state.mainCompositionDefaults.imageLeft || 90), 0, MAIN_PRINT_WIDTH - imageWidth);
+        const imageTop = clamp(readNumber(value.imageTop, state.mainCompositionDefaults.imageTop || 82), 0, MAIN_PRINT_HEIGHT - imageHeight);
+        const imageFit = ['contain', 'cover', 'fill'].includes(value.imageFit) ? value.imageFit : 'contain';
+
+        return {
+          background: value.background || state.mainCompositionDefaults.background || '#000d25',
+          imageLeft,
+          imageTop,
+          imageWidth,
+          imageHeight,
+          imageFit,
+        };
+      }
+
+      function renderCompositionBox(layout) {
+        const scale = getCompositionScale();
+        compositionStage.style.backgroundColor = layout.background;
+
+        [compositionSubject, compositionControl].forEach((element) => {
+          element.style.left = `${layout.imageLeft * scale.x}px`;
+          element.style.top = `${layout.imageTop * scale.y}px`;
+          element.style.width = `${layout.imageWidth * scale.x}px`;
+          element.style.height = `${layout.imageHeight * scale.y}px`;
+        });
+
+        compositionSubjectImage.style.objectFit = layout.imageFit === 'fill' ? 'fill' : layout.imageFit;
+      }
+
+      function getCompositionScale() {
+        const rect = compositionStage.getBoundingClientRect();
+        const width = rect.width || 420;
+        const height = rect.height || Math.round(width * MAIN_PRINT_HEIGHT / MAIN_PRINT_WIDTH);
+
+        return {
+          x: width / MAIN_PRINT_WIDTH,
+          y: height / MAIN_PRINT_HEIGHT,
+        };
+      }
+
+      function startCompositionDrag(event) {
+        if (!state.compositionEditor) {
+          return;
+        }
+
+        const handle = event.target.closest('[data-handle]');
+        state.compositionDrag = {
+          handle: handle ? handle.dataset.handle : '',
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          startLayout: readCompositionInputs(),
+        };
+
+        compositionControl.setPointerCapture(event.pointerId);
+        window.addEventListener('pointermove', moveCompositionDrag);
+        window.addEventListener('pointerup', stopCompositionDrag);
+        event.preventDefault();
+      }
+
+      function moveCompositionDrag(event) {
+        const drag = state.compositionDrag;
+
+        if (!drag) {
+          return;
+        }
+
+        const scale = getCompositionScale();
+        const dx = (event.clientX - drag.startX) / scale.x;
+        const dy = (event.clientY - drag.startY) / scale.y;
+        const next = resizeComposition(drag.startLayout, drag.handle, dx, dy);
+
+        applyCompositionToInputs(next);
+      }
+
+      function stopCompositionDrag(event) {
+        if (state.compositionDrag && state.compositionDrag.pointerId === event.pointerId) {
+          try {
+            compositionControl.releasePointerCapture(event.pointerId);
+          } catch (error) {
+            // Pointer capture may already be released by the browser.
+          }
+        }
+
+        state.compositionDrag = null;
+        window.removeEventListener('pointermove', moveCompositionDrag);
+        window.removeEventListener('pointerup', stopCompositionDrag);
+      }
+
+      function resizeComposition(layout, handle, dx, dy) {
+        const next = { ...layout };
+
+        if (!handle) {
+          next.imageLeft = layout.imageLeft + dx;
+          next.imageTop = layout.imageTop + dy;
+          return normalizeComposition(next);
+        }
+
+        const right = layout.imageLeft + layout.imageWidth;
+        const bottom = layout.imageTop + layout.imageHeight;
+        const centerX = layout.imageLeft + layout.imageWidth / 2;
+        const centerY = layout.imageTop + layout.imageHeight / 2;
+        const isEast = handle.includes('e');
+        const isWest = handle.includes('w');
+        const isSouth = handle.includes('s');
+        const isNorth = handle.includes('n');
+        const horizontalDelta = isEast ? dx : isWest ? -dx : 0;
+        const verticalDelta = isSouth ? dy : isNorth ? -dy : 0;
+        const widthFromHorizontal = layout.imageWidth + horizontalDelta;
+        const heightFromVertical = layout.imageHeight + verticalDelta;
+        const horizontalScale = Math.abs(horizontalDelta / layout.imageWidth);
+        const verticalScale = Math.abs(verticalDelta / layout.imageHeight);
+
+        if ((isEast || isWest) && (!isNorth && !isSouth || horizontalScale >= verticalScale)) {
+          next.imageWidth = widthFromHorizontal;
+          next.imageHeight = Math.round(widthFromHorizontal / SUBJECT_ASPECT_RATIO);
+        } else {
+          next.imageHeight = heightFromVertical;
+          next.imageWidth = Math.round(heightFromVertical * SUBJECT_ASPECT_RATIO);
+        }
+
+        if (isEast && !isWest) {
+          next.imageLeft = layout.imageLeft;
+        } else if (isWest && !isEast) {
+          next.imageLeft = right - next.imageWidth;
+        } else {
+          next.imageLeft = centerX - next.imageWidth / 2;
+        }
+
+        if (isSouth && !isNorth) {
+          next.imageTop = layout.imageTop;
+        } else if (isNorth && !isSouth) {
+          next.imageTop = bottom - next.imageHeight;
+        } else {
+          next.imageTop = centerY - next.imageHeight / 2;
+        }
+
+        if (handle === 'e' || handle === 'w') {
+          next.imageTop = centerY - next.imageHeight / 2;
+        }
+
+        if (handle === 'n' || handle === 's') {
+          next.imageLeft = centerX - next.imageWidth / 2;
+        }
+
+        return normalizeComposition(next, Math.abs(verticalDelta) > Math.abs(horizontalDelta) ? 'height' : 'width');
       }
 
       function openStickerZoom(sticker) {
@@ -1002,6 +1710,23 @@
           ?.signedUrl || '';
       }
 
+      function getMainSubjectUrl(item) {
+        return Object.values(item.outputs || {})
+          .find((output) => output.kind === 'main')
+          ?.files
+          ?.find((file) => file.type === 'subject-png')
+          ?.signedUrl || '';
+      }
+
+      function getImageComposition(item) {
+        const mainOutput = Object.values(item.outputs || {})
+          .find((output) => output.kind === 'main');
+
+        return item.mainComposition
+          || mainOutput?.composition
+          || state.mainCompositionDefaults;
+      }
+
       function getStickerItems(item) {
         return Object.values(item.outputs || {})
           .filter((output) => output.kind === 'sticker')
@@ -1021,6 +1746,15 @@
           })
           .filter((item) => item && item.url && item.outputId)
           .slice(0, 10);
+      }
+
+      function readNumber(value, fallback) {
+        const parsed = Number.parseInt(value, 10);
+        return Number.isFinite(parsed) ? parsed : fallback;
+      }
+
+      function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
       }
 
       function stopListeners() {
@@ -1093,6 +1827,22 @@
         }
 
         return `${seconds}s`;
+      }
+
+      function timestampToMillis(value) {
+        if (!value) {
+          return 0;
+        }
+
+        if (typeof value.toMillis === 'function') {
+          return value.toMillis();
+        }
+
+        if (typeof value.seconds === 'number') {
+          return value.seconds * 1000;
+        }
+
+        return Number(value) || 0;
       }
     </script>
   </body>

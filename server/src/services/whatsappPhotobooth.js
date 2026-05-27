@@ -11,7 +11,9 @@ const {
   uploadFileToStorage,
 } = require('./firebaseAdmin');
 const {
+  MAIN_PRINT_SIZE,
   STICKER_SHEET_FILENAME,
+  composeMainCardFromSubject,
   ensureStickerSheetForRun,
   generateWorldCupImage,
   getGeneratedFilePath,
@@ -279,6 +281,168 @@ async function regenerateImagePackage({
     });
     throw error;
   }
+}
+
+async function recomposeMainImage({
+  imageId,
+  composition = {},
+  requestedBy,
+  sendWhatsApp = true,
+}) {
+  const imageRef = getImageRef(imageId);
+  const imageSnap = await imageRef.get();
+
+  if (!imageSnap.exists) {
+    throw clientError('image_not_found', 'Imagem nao encontrada para recompor.');
+  }
+
+  const imageData = imageSnap.data() || {};
+  const profile = getProfileFromImageData(imageData);
+  const mainOutput = getMainOutputFromImage(imageData);
+
+  if (!mainOutput) {
+    throw clientError('missing_main_output', 'Imagem principal nao encontrada para recompor.');
+  }
+
+  const subjectBuffer = await getMainSubjectBufferForRecomposition(imageData, mainOutput);
+  const composed = await composeMainCardFromSubject({
+    subjectBuffer,
+    composition,
+  });
+  const now = Timestamp.now();
+  const stamp = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
+  const printName = `${mainOutput.id || '01-figurinha-principal'}-manager-${stamp}.png`;
+  const printUpload = await uploadBufferToStorage({
+    buffer: composed.buffer,
+    destination: `images/${imageId}/generated/${printName}`,
+    contentType: 'image/png',
+    metadata: {
+      imageId,
+      profileId: profile.id,
+      outputId: mainOutput.id || '01-figurinha-principal',
+      fileType: 'print-png',
+      source: 'manager-recompose',
+    },
+  });
+  const whatsappName = `${mainOutput.id || '01-figurinha-principal'}-manager-${stamp}-whatsapp.png`;
+  const whatsappBuffer = await sharp(composed.buffer)
+    .resize(MAIN_WHATSAPP_MAX_SIZE, MAIN_WHATSAPP_MAX_SIZE, {
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .png({
+      compressionLevel: 9,
+      adaptiveFiltering: true,
+    })
+    .toBuffer();
+  const whatsappUpload = await uploadBufferToStorage({
+    buffer: whatsappBuffer,
+    destination: `images/${imageId}/generated/${whatsappName}`,
+    contentType: 'image/png',
+    metadata: {
+      imageId,
+      profileId: profile.id,
+      outputId: mainOutput.id || '01-figurinha-principal',
+      fileType: 'whatsapp-png',
+      source: 'manager-recompose',
+      maxSize: String(MAIN_WHATSAPP_MAX_SIZE),
+    },
+  });
+  const printFile = {
+    type: 'print-png',
+    name: printName,
+    width: MAIN_PRINT_SIZE.width,
+    height: MAIN_PRINT_SIZE.height,
+    density: MAIN_PRINT_SIZE.density,
+    recomposed: true,
+    ...printUpload,
+  };
+  const whatsappFile = {
+    type: 'whatsapp-png',
+    name: whatsappName,
+    maxSize: MAIN_WHATSAPP_MAX_SIZE,
+    recomposed: true,
+    ...whatsappUpload,
+  };
+  const keptFiles = Array.isArray(mainOutput.files)
+    ? mainOutput.files.filter((file) => file && !['print-png', 'whatsapp-png'].includes(file.type))
+    : [];
+  const outputId = mainOutput.id || '01-figurinha-principal';
+
+  await imageRef.set({
+    status: imageData.status || 'completed',
+    updatedAt: now,
+    params: {
+      ...(imageData.params || {}),
+      mainBackground: composition.background || composition.mainBackground || composed.layout.background,
+      mainImageLeft: String(composed.layout.imageLeft),
+      mainImageTop: String(composed.layout.imageTop),
+      mainImageWidth: String(composed.layout.imageWidth),
+      mainImageHeight: String(composed.layout.imageHeight),
+      mainImageFit: composed.layout.imageFit,
+    },
+    mainComposition: composed.layout,
+    outputs: {
+      [outputId]: {
+        ...mainOutput,
+        id: outputId,
+        kind: 'main',
+        status: 'ready',
+        files: [printFile, whatsappFile, ...keptFiles],
+        composition: composed.layout,
+        recomposedAt: now,
+        recomposedBy: requestedBy || '',
+        updatedAt: now,
+      },
+    },
+  }, { merge: true });
+
+  let messageSid = '';
+
+  if (sendWhatsApp && profile.whatsAppAddress) {
+    try {
+      const message = await sendWhatsAppMedia(profile.whatsAppAddress, {
+        mediaUrl: whatsappFile.signedUrl,
+      });
+      messageSid = message.sid || '';
+
+      await imageRef.set({
+        deliveries: {
+          [outputId]: {
+            status: 'sent',
+            messageSid,
+            fileType: whatsappFile.type,
+            sentAt: Timestamp.now(),
+            source: 'manager-recompose',
+          },
+        },
+        updatedAt: Timestamp.now(),
+      }, { merge: true });
+    } catch (error) {
+      console.error(`[whatsapp] failed to send recomposed ${outputId}`, error);
+      await imageRef.set({
+        deliveries: {
+          [outputId]: {
+            status: 'failed',
+            fileType: whatsappFile.type,
+            error: publicError(error),
+            failedAt: Timestamp.now(),
+            source: 'manager-recompose',
+          },
+        },
+        updatedAt: Timestamp.now(),
+      }, { merge: true });
+    }
+  }
+
+  return {
+    ok: true,
+    imageId,
+    outputId,
+    composition: composed.layout,
+    files: [printFile, whatsappFile],
+    messageSid,
+  };
 }
 
 async function resendStickerOutput({
@@ -858,6 +1022,45 @@ function getPrintFileFromImage(imageData, type) {
   return main.files.find((item) => item.type === 'print-png') || null;
 }
 
+function getMainOutputFromImage(imageData = {}) {
+  const outputs = imageData.outputs || {};
+
+  return outputs['01-figurinha-principal']
+    || Object.values(outputs).find((output) => output && output.kind === 'main')
+    || null;
+}
+
+async function getMainSubjectBufferForRecomposition(imageData = {}, mainOutput = {}) {
+  const subjectFile = Array.isArray(mainOutput.files)
+    ? mainOutput.files.find((file) => file && file.type === 'subject-png')
+    : null;
+
+  if (subjectFile && subjectFile.signedUrl) {
+    const remote = await downloadPublicBuffer(subjectFile.signedUrl);
+    return remote.buffer;
+  }
+
+  const runId = imageData.runId || '';
+
+  if (runId) {
+    const subjectPath = path.join(
+      SERVER_ROOT,
+      'public',
+      'generated',
+      runId,
+      '01-figurinha-principal-subject.png',
+    );
+
+    try {
+      return await fs.readFile(subjectPath);
+    } catch (error) {
+      console.warn('[manager] local subject unavailable for recomposition:', subjectPath);
+    }
+  }
+
+  throw clientError('missing_subject_image', 'Arquivo subject-png da imagem principal nao encontrado.');
+}
+
 function getImageRef(imageId) {
   return getEventRef().collection('images').doc(imageId);
 }
@@ -1335,6 +1538,7 @@ module.exports = {
   createPrintRequest,
   ensureEventPrintLimit,
   handleWhatsAppWebhook,
+  recomposeMainImage,
   regenerateImagePackage,
   resendStickerOutput,
 };

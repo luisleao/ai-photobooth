@@ -3,6 +3,12 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const sharp = require('sharp');
 const {
+  Timestamp,
+  getEventId,
+  getEventRef,
+  isFirebaseConfigured,
+} = require('./firebaseAdmin');
+const {
   MAIN_IMAGE_ID,
   IMAGE_SPECS,
   buildPromptForSpec,
@@ -53,7 +59,7 @@ const OPTIMIZED_SOURCE_FILENAME = 'source-openai.jpg';
 const SECONDARY_SOURCE_FILENAME = 'source-secondary.png';
 const MAIN_SUBJECT_FILENAME = '01-figurinha-principal-subject.png';
 const MAIN_CARD_COMPOSITION_ENV = readJsonEnv('MAIN_CARD_COMPOSITION');
-const MAIN_COMPOSITE_DEFAULTS = {
+const MAIN_COMPOSITE_ENV_DEFAULTS = {
   background: process.env.MAIN_CARD_BACKGROUND || MAIN_CARD_COMPOSITION_ENV.background || '#000d25',
   imageLeft: readIntegerEnv('MAIN_CARD_IMAGE_LEFT', readIntegerValue(MAIN_CARD_COMPOSITION_ENV.imageLeft, 90, -1000, 3000), -1000, 3000),
   imageTop: readIntegerEnv('MAIN_CARD_IMAGE_TOP', readIntegerValue(MAIN_CARD_COMPOSITION_ENV.imageTop, 82, -1000, 3000), -1000, 3000),
@@ -458,7 +464,7 @@ async function saveMainCompositeImage({
   imageBuffer,
   params,
 }) {
-  const layout = getMainCompositeLayout(params);
+  const layout = await getMainCompositeLayout(params);
   const name = `${spec.filename}.png`;
   const filePath = path.join(outputDir, name);
   const subjectPath = path.join(outputDir, MAIN_SUBJECT_FILENAME);
@@ -545,6 +551,70 @@ async function saveMainCompositeImage({
   ];
 }
 
+async function composeMainCardFromSubject({
+  subjectBuffer,
+  composition = {},
+}) {
+  const layout = await getMainCompositeLayout(composition);
+  const cardBackground = await sharp(MAIN_CARD_BACKGROUND_IMAGE_PATH)
+    .resize(MAIN_PRINT_SIZE.width, MAIN_PRINT_SIZE.height, {
+      fit: 'fill',
+    })
+    .png()
+    .toBuffer();
+  const overlay = await sharp(MAIN_CARD_OVERLAY_PATH)
+    .resize(MAIN_PRINT_SIZE.width, MAIN_PRINT_SIZE.height, {
+      fit: 'fill',
+    })
+    .png()
+    .toBuffer();
+  const subject = await sharp(subjectBuffer)
+    .rotate()
+    .resize(layout.imageWidth, layout.imageHeight, {
+      fit: layout.imageFit,
+      position: 'center',
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
+    .png({ compressionLevel: 9 })
+    .toBuffer();
+  const buffer = await sharp({
+    create: {
+      width: MAIN_PRINT_SIZE.width,
+      height: MAIN_PRINT_SIZE.height,
+      channels: 4,
+      background: layout.background,
+    },
+  })
+    .composite([
+      {
+        input: cardBackground,
+        left: 0,
+        top: 0,
+        blend: 'over',
+      },
+      {
+        input: subject,
+        left: layout.imageLeft,
+        top: layout.imageTop,
+        blend: 'over',
+      },
+      {
+        input: overlay,
+        left: 0,
+        top: 0,
+        blend: 'over',
+      },
+    ])
+    .withMetadata({ density: MAIN_PRINT_SIZE.density })
+    .png({ compressionLevel: 9 })
+    .toBuffer();
+
+  return {
+    buffer,
+    layout,
+  };
+}
+
 function createImageProvider({
   sourceBuffer,
   sourceMimeType,
@@ -597,7 +667,7 @@ function getImageGenerationStatus() {
     mainComposite: {
       backgroundImage: path.basename(MAIN_CARD_BACKGROUND_IMAGE_PATH),
       overlay: path.basename(MAIN_CARD_OVERLAY_PATH),
-      ...MAIN_COMPOSITE_DEFAULTS,
+      ...MAIN_COMPOSITE_ENV_DEFAULTS,
     },
     stickerSheet: {
       filename: STICKER_SHEET_FILENAME,
@@ -614,15 +684,39 @@ function getImageGenerationStatus() {
   };
 }
 
-function getMainCompositionConfig() {
+async function getMainCompositionConfig() {
+  const config = await getMainCompositeDefaults();
+
   return {
     printSize: MAIN_PRINT_SIZE,
     backgroundImageUrl: '/api/photobooth/main-card-background',
     overlayImageUrl: '/api/photobooth/main-card-overlay',
-    defaults: {
-      ...MAIN_COMPOSITE_DEFAULTS,
-    },
+    defaults: config.defaults,
+    source: config.source,
+    firestore: config.firestore,
   };
+}
+
+async function saveMainCompositionConfig(value = {}, updatedBy = 'generator') {
+  if (!isFirebaseConfigured()) {
+    throw serviceUnavailableError(
+      'firebase_not_configured',
+      'Firebase Admin nao configurado para salvar a composicao.',
+    );
+  }
+
+  const defaults = normalizeMainComposition(value);
+  const now = Timestamp.now();
+
+  await getEventRef().set({
+    eventId: getEventId(),
+    mainComposition: defaults,
+    mainCompositionUpdatedAt: now,
+    mainCompositionUpdatedBy: updatedBy,
+    updatedAt: now,
+  }, { merge: true });
+
+  return getMainCompositionConfig();
 }
 
 function getMainCompositionAssetPath(kind) {
@@ -935,15 +1029,114 @@ function readIntegerValue(value, fallback, min, max) {
   return Math.min(max, Math.max(min, parsed));
 }
 
-function getMainCompositeLayout(params = {}) {
+async function getMainCompositeLayout(params = {}) {
+  const config = await getMainCompositeDefaults();
+  const defaults = config.defaults;
+
   return {
-    background: parseColorParam(params.mainBackground, parseColorParam(MAIN_COMPOSITE_DEFAULTS.background)),
-    imageLeft: readIntegerParam(params.mainImageLeft, MAIN_COMPOSITE_DEFAULTS.imageLeft, -1000, 3000),
-    imageTop: readIntegerParam(params.mainImageTop, MAIN_COMPOSITE_DEFAULTS.imageTop, -1000, 3000),
-    imageWidth: readIntegerParam(params.mainImageWidth, MAIN_COMPOSITE_DEFAULTS.imageWidth, 100, 3000),
-    imageHeight: readIntegerParam(params.mainImageHeight, MAIN_COMPOSITE_DEFAULTS.imageHeight, 100, 4000),
-    imageFit: normalizeFit(params.mainImageFit || MAIN_COMPOSITE_DEFAULTS.imageFit),
+    background: normalizeColorString(readParamAlias(params, 'mainBackground', 'background', defaults.background), defaults.background),
+    imageLeft: readIntegerParam(readParamAlias(params, 'mainImageLeft', 'imageLeft', defaults.imageLeft), defaults.imageLeft, -1000, 3000),
+    imageTop: readIntegerParam(readParamAlias(params, 'mainImageTop', 'imageTop', defaults.imageTop), defaults.imageTop, -1000, 3000),
+    imageWidth: readIntegerParam(readParamAlias(params, 'mainImageWidth', 'imageWidth', defaults.imageWidth), defaults.imageWidth, 100, 3000),
+    imageHeight: readIntegerParam(readParamAlias(params, 'mainImageHeight', 'imageHeight', defaults.imageHeight), defaults.imageHeight, 100, 4000),
+    imageFit: normalizeFit(readParamAlias(params, 'mainImageFit', 'imageFit', defaults.imageFit)),
   };
+}
+
+function readParamAlias(params, preferred, fallback, defaultValue) {
+  if (params && params[preferred] !== undefined && params[preferred] !== null && params[preferred] !== '') {
+    return params[preferred];
+  }
+
+  if (params && params[fallback] !== undefined && params[fallback] !== null && params[fallback] !== '') {
+    return params[fallback];
+  }
+
+  return defaultValue;
+}
+
+async function getMainCompositeDefaults() {
+  const envDefaults = normalizeMainComposition(MAIN_COMPOSITE_ENV_DEFAULTS);
+
+  if (!isFirebaseConfigured()) {
+    return {
+      defaults: envDefaults,
+      source: 'env',
+      firestore: false,
+    };
+  }
+
+  try {
+    const eventRef = getEventRef();
+    const snap = await eventRef.get();
+    const data = snap.exists ? snap.data() || {} : {};
+    const hasFirestoreComposition = data.mainComposition
+      && typeof data.mainComposition === 'object'
+      && !Array.isArray(data.mainComposition);
+    const defaults = normalizeMainComposition(hasFirestoreComposition
+      ? data.mainComposition
+      : envDefaults);
+
+    if (!hasFirestoreComposition || !hasCompleteMainComposition(data.mainComposition) || data.eventId !== getEventId()) {
+      const now = Timestamp.now();
+      await eventRef.set({
+        eventId: getEventId(),
+        mainComposition: defaults,
+        mainCompositionSeededFromEnv: !hasFirestoreComposition,
+        mainCompositionUpdatedAt: data.mainCompositionUpdatedAt || now,
+        updatedAt: now,
+      }, { merge: true });
+    }
+
+    return {
+      defaults,
+      source: hasFirestoreComposition ? 'firestore' : 'firestore-seeded-from-env',
+      firestore: true,
+    };
+  } catch (error) {
+    console.error('[photobooth] failed to read main composition from firestore', error);
+    return {
+      defaults: envDefaults,
+      source: 'env-fallback',
+      firestore: false,
+    };
+  }
+}
+
+function normalizeMainComposition(value = {}) {
+  const fallback = MAIN_COMPOSITE_ENV_DEFAULTS;
+  const imageWidth = readIntegerValue(value.imageWidth, fallback.imageWidth, 100, 3000);
+  const imageHeight = readIntegerValue(value.imageHeight, fallback.imageHeight, 100, 4000);
+
+  return {
+    background: normalizeColorString(value.background, fallback.background),
+    imageLeft: readIntegerValue(value.imageLeft, fallback.imageLeft, -1000, 3000),
+    imageTop: readIntegerValue(value.imageTop, fallback.imageTop, -1000, 3000),
+    imageWidth,
+    imageHeight,
+    imageFit: normalizeFit(value.imageFit || fallback.imageFit),
+  };
+}
+
+function normalizeColorString(value, fallback = '#000d25') {
+  const text = String(value || '').trim();
+
+  if (/^#[a-f0-9]{3}$/i.test(text) || /^#[a-f0-9]{6}$/i.test(text)) {
+    return text.toLowerCase();
+  }
+
+  return String(fallback || '#000d25');
+}
+
+function hasCompleteMainComposition(value = {}) {
+  return [
+    'background',
+    'imageLeft',
+    'imageTop',
+    'imageWidth',
+    'imageHeight',
+    'imageFit',
+  ].every((key) => Object.prototype.hasOwnProperty.call(value, key));
 }
 
 function readIntegerParam(value, fallback, min, max) {
@@ -1039,6 +1232,14 @@ function clientError(code, publicMessage) {
   return error;
 }
 
+function serviceUnavailableError(code, publicMessage) {
+  const error = new Error(publicMessage);
+  error.statusCode = 503;
+  error.code = code;
+  error.publicMessage = publicMessage;
+  return error;
+}
+
 module.exports = {
   MAIN_PRINT_SIZE,
   SMALL_PNG_SIZE,
@@ -1047,6 +1248,7 @@ module.exports = {
   STICKER_SHEET_FILENAME,
   generateWorldCupImages,
   generateWorldCupImage,
+  composeMainCardFromSubject,
   ensureStickerSheetForRun,
   clearGeneratedImages,
   getGeneratedFilePath,
@@ -1055,4 +1257,5 @@ module.exports = {
   getImageGenerationStatus,
   getMainCompositionAssetPath,
   getMainCompositionConfig,
+  saveMainCompositionConfig,
 };

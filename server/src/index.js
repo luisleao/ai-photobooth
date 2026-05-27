@@ -25,6 +25,7 @@ const {
   getImageSpecSummaries,
   getMainCompositionAssetPath,
   getMainCompositionConfig,
+  saveMainCompositionConfig,
 } = require('./services/generatedImages');
 const {
   getEventId,
@@ -37,6 +38,7 @@ const {
   createPrintRequest,
   ensureEventPrintLimit,
   handleWhatsAppWebhook,
+  recomposeMainImage,
   regenerateImagePackage,
   resendStickerOutput,
 } = require('./services/whatsappPhotobooth');
@@ -112,10 +114,12 @@ app.get('/manager', (req, res) => {
 
 app.get('/api/photobooth/manager/config', async (req, res) => {
   let printLimitPerProfile = null;
+  let mainComposition = null;
 
   if (isFirebaseConfigured()) {
     try {
       printLimitPerProfile = await ensureEventPrintLimit();
+      mainComposition = await getMainCompositionConfig();
     } catch (error) {
       console.error('[manager] failed to ensure event print limit', error);
     }
@@ -126,6 +130,7 @@ app.get('/api/photobooth/manager/config', async (req, res) => {
     firestoreRoot: `/events/${getEventId()}`,
     storageRoot: getStorageRoot(),
     printLimitPerProfile,
+    mainComposition,
     firebaseConfig: getFirebasePublicConfig(),
   });
 });
@@ -156,6 +161,15 @@ app.post('/api/photobooth/manager/prints', async (req, res, next) => {
   }
 });
 
+app.post('/api/photobooth/manager/main-composition', async (req, res, next) => {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+    res.json(await saveMainCompositionConfig(req.body, user.email || user.uid));
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post('/api/photobooth/manager/images/:imageId/regenerate', async (req, res, next) => {
   try {
     const user = await verifyFirebaseIdToken(req);
@@ -177,6 +191,28 @@ app.post('/api/photobooth/manager/images/:imageId/regenerate', async (req, res, 
       imageId,
       status: 'regenerating',
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/photobooth/manager/images/:imageId/main-composition/regenerate', async (req, res, next) => {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+    const imageId = cleanString(req.params.imageId, 160);
+
+    if (!imageId) {
+      throw clientError('missing_image_id', 'Informe a imagem para recompor.');
+    }
+
+    const result = await recomposeMainImage({
+      imageId,
+      composition: req.body && req.body.composition ? req.body.composition : req.body,
+      requestedBy: user.email || user.uid,
+      sendWhatsApp: true,
+    });
+
+    res.json(result);
   } catch (error) {
     next(error);
   }
@@ -234,18 +270,36 @@ app.post('/api/photobooth/manager/prints/:printId/status', async (req, res, next
 app.post('/api/photobooth/whatsapp', handleWhatsAppWebhook);
 app.post('/api/photobooth/whatsapp/webhook', handleWhatsAppWebhook);
 
-app.get('/api/photobooth/image-prompts', (req, res) => {
-  res.json({
-    total: getImageSpecSummaries().length,
-    mainPrintSize: MAIN_PRINT_SIZE,
-    mainComposition: getMainCompositionConfig(),
-    stickerWebpSize: SMALL_WEBP_SIZE,
-    specs: getImageSpecSummaries(),
-  });
+app.get('/api/photobooth/image-prompts', async (req, res, next) => {
+  try {
+    const mainComposition = await getMainCompositionConfig();
+
+    res.json({
+      total: getImageSpecSummaries().length,
+      mainPrintSize: MAIN_PRINT_SIZE,
+      mainComposition,
+      stickerWebpSize: SMALL_WEBP_SIZE,
+      specs: getImageSpecSummaries(),
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
-app.get('/api/photobooth/main-composition', (req, res) => {
-  res.json(getMainCompositionConfig());
+app.get('/api/photobooth/main-composition', async (req, res, next) => {
+  try {
+    res.json(await getMainCompositionConfig());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/photobooth/main-composition', async (req, res, next) => {
+  try {
+    res.json(await saveMainCompositionConfig(req.body, 'generator'));
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get('/api/photobooth/main-card-background', sendMainCardAsset('background'));
