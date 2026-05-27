@@ -426,9 +426,9 @@ function createStickerSheetHeaderLayer(params = {}) {
   const phoneLabel = phone || 'Telefone nao informado';
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${STICKER_SHEET_HEADER.height}" viewBox="0 0 ${width} ${STICKER_SHEET_HEADER.height}">
-      <rect x="0" y="0" width="${width}" height="${STICKER_SHEET_HEADER.height}" rx="0" fill="#000000"/>
-      <text x="${width / 2}" y="46" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700" text-anchor="middle">${escapeXml(name)}</text>
-      <text x="${width / 2}" y="84" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" text-anchor="middle">${escapeXml(phoneLabel)}</text>
+      <rect x="0" y="0" width="${width}" height="${STICKER_SHEET_HEADER.height}" rx="0" fill="#b8f36b"/>
+      <text x="${width / 2}" y="46" fill="#000000" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700" text-anchor="middle">${escapeXml(name)}</text>
+      <text x="${width / 2}" y="84" fill="#000000" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" text-anchor="middle">${escapeXml(phoneLabel)}</text>
     </svg>
   `;
 
