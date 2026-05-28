@@ -1,0 +1,26 @@
+{
+  "id": "/search/",
+  "short_name": "Photobooth",
+  "name": "AI Photobooth Search",
+  "description": "Busca de fotos e figurinhas do AI Photobooth.",
+  "start_url": "/search/",
+  "scope": "/search/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#087443",
+  "background_color": "#f4f7fa",
+  "icons": [
+    {
+      "src": "/images/twilio-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/twilio-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ]
+}
