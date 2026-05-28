@@ -4,7 +4,7 @@ const { loadEnv } = require('./env');
 
 loadEnv();
 
-const DEFAULT_EVENT_ID = 'meta-20260528';
+const DEFAULT_EVENT_ID = 'photobooth-event';
 const SIGNED_URL_EXPIRES = process.env.SIGNED_URL_EXPIRES || '03-09-2491';
 
 let initialized = false;

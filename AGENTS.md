@@ -91,11 +91,11 @@ Os parametros de composicao da figurinha principal podem vir da interface ou do 
 
 ## Fila de impressao local
 
-O Firestore usa a raiz `/events/meta-20260528`. A mesma raiz e usada no Storage como `events/meta-20260528`.
+O Firestore usa a raiz `/events/${eventId}`, derivada de `PHOTOBOOTH_EVENT_ID`. A mesma raiz e usada no Storage como `events/${eventId}` por padrao, a menos que `PHOTOBOOTH_STORAGE_ROOT` seja definido.
 
-O fluxo WhatsApp usa apenas tres colecoes no evento: `profiles`, `images` e `prints`. `profiles` usa como ID o MD5 do telefone com o prefixo `whatsapp:` removido, seguindo a funcao `limpaNumero` do projeto de referencia. `images` usa como ID o SID da mensagem recebida e guarda todos os parametros recebidos no webhook em `webhookParams`. `prints` guarda os pedidos de impressao e o tipo (`main` ou `stickers`). Os arquivos originais, fontes reduzidas, imagens geradas e folha de impressao sao enviados para o Storage dentro de `events/meta-20260528/images/<messageSid>/`.
+O fluxo WhatsApp usa apenas tres colecoes no evento: `profiles`, `images` e `prints`. `profiles` usa como ID o MD5 do telefone com o prefixo `whatsapp:` removido, seguindo a funcao `limpaNumero` do projeto de referencia. `images` usa como ID o SID da mensagem recebida e guarda todos os parametros recebidos no webhook em `webhookParams`. `prints` guarda os pedidos de impressao e o tipo (`main` ou `stickers`). Os arquivos originais, fontes reduzidas, imagens geradas e folha de impressao sao enviados para o Storage dentro de `events/${eventId}/images/<messageSid>/` por padrao.
 
-O documento `/events/meta-20260528` possui `printLimitPerProfile`, que limita quantos pacotes cada participante pode enviar para geracao/impressao. Cada perfil em `profiles` possui `unlimited`, salvo como `false` por padrao; quando `true`, o limite do evento nao e aplicado para aquele participante. O evento e cada perfil acumulam contadores em `stats`, incluindo fotos recebidas, fotos geradas, tempos totais de geracao e impressoes concluidas de `main` e `stickers`.
+O documento `/events/${eventId}` possui `printLimitPerProfile`, que limita quantos pacotes cada participante pode enviar para geracao/impressao. Cada perfil em `profiles` possui `unlimited`, salvo como `false` por padrao; quando `true`, o limite do evento nao e aplicado para aquele participante. O evento e cada perfil acumulam contadores em `stats`, incluindo fotos recebidas, fotos geradas, tempos totais de geracao e impressoes concluidas de `main` e `stickers`.
 
 O script `scripts/printer.js` sincroniza documentos `prints` pendentes do Firestore. Impressoes `main` sao automaticas: o script baixa a imagem principal, monta um PDF 10x15 com `pdfkit` e imprime usando `pdf-to-printer`, seguindo o padrao do `cartoon-printer` do projeto de referencia. Impressoes `stickers` sao manuais: o script baixa a folha PNG para `/scripts/pending` e monitora `/scripts/printed`; quando o arquivo aparece em `/scripts/printed`, ele marca o documento como `printed` e envia uma notificacao WhatsApp.
 
@@ -111,8 +111,8 @@ Cada documento `images/<messageSid>` guarda `generation.lastDurationMs`, `genera
 
 Variaveis principais:
 
-- `PHOTOBOOTH_EVENT_ID`: id do evento no Firestore, padrao `meta-20260528`.
-- `PHOTOBOOTH_STORAGE_ROOT`: raiz no Storage, padrao `events/meta-20260528`.
+- `PHOTOBOOTH_EVENT_ID`: id do evento no Firestore, padrao generico `photobooth-event` se nao houver `.env`.
+- `PHOTOBOOTH_STORAGE_ROOT`: raiz opcional no Storage; quando vazio, usa `events/${eventId}`.
 - `PHOTOBOOTH_PRINT_LIMIT_PER_PROFILE`: valor inicial de `printLimitPerProfile` quando o documento do evento ainda nao tiver esse campo.
 - `WHATSAPP_MAIN_IMAGE_MAX_SIZE`: lado maximo da copia PNG da imagem principal enviada pelo WhatsApp.
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` ou `TWILIO_MESSAGING_SERVICE_SID`.

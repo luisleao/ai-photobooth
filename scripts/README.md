@@ -11,7 +11,7 @@ Scripts devem documentar:
 
 ## Scripts atuais
 
-- `printer.js`: sincroniza `events/meta-20260528/prints`; imprime automaticamente pedidos `type=main` com `pdfkit`/`pdf-to-printer`, baixa pedidos `type=stickers` para `scripts/pending`, monitora `scripts/printed` e notifica o participante via WhatsApp quando o arquivo impresso aparece.
+- `printer.js`: sincroniza `events/${eventId}/prints`, usando `PHOTOBOOTH_EVENT_ID`; imprime automaticamente pedidos `type=main` com `pdfkit`/`pdf-to-printer`, baixa pedidos `type=stickers` para `scripts/pending`, monitora `scripts/printed` e notifica o participante via WhatsApp quando o arquivo impresso aparece.
 - `clearGenerated.js`: remove as saidas locais de `server/public/generated`.
 
 ## Ambiente
