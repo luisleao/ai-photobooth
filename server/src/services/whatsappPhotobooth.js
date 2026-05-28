@@ -27,6 +27,7 @@ const {
   createMessagingResponse,
   downloadTwilioMedia,
   sendWhatsAppMedia,
+  sendWhatsAppText,
   toWhatsAppAddress,
 } = require('./twilioWhatsApp');
 
@@ -39,6 +40,7 @@ const SOURCE_IMAGE_MAX_SIZE = readIntegerEnv('WHATSAPP_SOURCE_IMAGE_MAX_SIZE', 1
 const SOURCE_IMAGE_QUALITY = readIntegerEnv('WHATSAPP_SOURCE_IMAGE_QUALITY', 82, 60, 95);
 const DEFAULT_PRINT_LIMIT_PER_PROFILE = readIntegerEnv('PHOTOBOOTH_PRINT_LIMIT_PER_PROFILE', 1, 0, 1000);
 const MAIN_WHATSAPP_MAX_SIZE = readIntegerEnv('WHATSAPP_MAIN_IMAGE_MAX_SIZE', 1400, 640, 1800);
+const AUTO_PRINT_ON_GENERATION = readBooleanEnv('PHOTOBOOTH_AUTO_PRINT_ON_GENERATION', false);
 
 async function handleWhatsAppWebhook(req, res) {
   const twiml = createMessagingResponse();
@@ -108,6 +110,7 @@ async function handleWhatsAppWebhook(req, res) {
         accepted: true,
       });
 
+      twiml.message('Aguarde uns minutos, daqui a pouco te responderemos por aqui com a sua foto.');
       sendTwiml(res, twiml);
 
       runInBackground(() => downloadStoreAndGenerate({
@@ -301,7 +304,7 @@ async function recomposeMainImage({
   const mainOutput = getMainOutputFromImage(imageData);
 
   if (!mainOutput) {
-    throw clientError('missing_main_output', 'Imagem principal nao encontrada para recompor.');
+    throw clientError('missing_main_output', 'Cartao nao encontrado para recompor.');
   }
 
   const subjectBuffer = await getMainSubjectBufferForRecomposition(imageData, mainOutput);
@@ -555,14 +558,16 @@ async function generatePackageFromSource({
     updatedAt: Timestamp.now(),
   }, { merge: true });
 
-  await createPrintRequest({
-    imageId,
-    type: 'main',
-    profile,
-    source: trigger === 'manager-regenerate' ? 'regenerate-main' : 'automatic-main',
-    requestedBy: requestedBy || 'system',
-    file: mainOutput.printFile || mainOutput.deliveryFile,
-  });
+  if (AUTO_PRINT_ON_GENERATION) {
+    await createPrintRequest({
+      imageId,
+      type: 'main',
+      profile,
+      source: trigger === 'manager-regenerate' ? 'regenerate-main' : 'automatic-main',
+      requestedBy: requestedBy || 'system',
+      file: mainOutput.printFile || mainOutput.deliveryFile,
+    });
+  }
 
   const stickerSpecs = getImageSpecSummaries().filter((spec) => spec.kind === 'sticker');
   const stickerResults = await Promise.all(stickerSpecs.map((spec) => generateWorldCupImage({
@@ -586,6 +591,9 @@ async function generatePackageFromSource({
         updatedAt: Timestamp.now(),
         errors: {
           [spec.id]: publicError(error),
+        },
+        errorDetails: {
+          [spec.id]: detailedError(error),
         },
       }, { merge: true });
       return {
@@ -624,6 +632,18 @@ async function generatePackageFromSource({
     },
   }, { merge: true });
 
+  if (failed.length) {
+    const partialError = new Error(`${failed.length} sticker(s) falharam durante a geracao.`);
+    partialError.code = 'partial_sticker_generation_failed';
+    partialError.publicMessage = 'Algumas figurinhas nao puderam ser geradas.';
+    await notifyGenerationFailure({
+      imageRef,
+      profile,
+      error: partialError,
+      now: Timestamp.now(),
+    });
+  }
+
   await recordGenerationSuccess({
     imageRef,
     imageId,
@@ -632,17 +652,19 @@ async function generatePackageFromSource({
     trigger,
   });
 
-  await createPrintRequest({
-    imageId,
-    type: 'stickers',
-    profile,
-    source: trigger === 'manager-regenerate' ? 'regenerate-stickers' : 'automatic-stickers',
-    requestedBy: requestedBy || 'system',
-    file: {
-      ...stickerSheet,
-      ...stickerSheetUpload,
-    },
-  });
+  if (AUTO_PRINT_ON_GENERATION) {
+    await createPrintRequest({
+      imageId,
+      type: 'stickers',
+      profile,
+      source: trigger === 'manager-regenerate' ? 'regenerate-stickers' : 'automatic-stickers',
+      requestedBy: requestedBy || 'system',
+      file: {
+        ...stickerSheet,
+        ...stickerSheetUpload,
+      },
+    });
+  }
 }
 
 async function uploadAndSendOutput({
@@ -862,6 +884,7 @@ async function createPrintRequest({
     source,
     requestedBy,
     requestedAt: now,
+    requestCount: FieldValue.increment(1),
     printedAt: null,
     notifiedAt: null,
     notificationError: null,
@@ -877,6 +900,7 @@ async function createPrintRequest({
         printId,
         status,
         requestedAt: now,
+        requestCount: FieldValue.increment(1),
       },
     },
   }, { merge: true });
@@ -893,7 +917,7 @@ async function createPrintRequest({
     ok: true,
     printId,
     message: cleanType === 'main'
-      ? 'Imagem principal enviada para impressao automatica.'
+      ? 'Cartao enviado para impressao automatica.'
       : 'Combinado. Seus stickers entraram na fila de impressao.',
   };
 }
@@ -1062,7 +1086,7 @@ async function getMainSubjectBufferForRecomposition(imageData = {}, mainOutput =
     }
   }
 
-  throw clientError('missing_subject_image', 'Arquivo subject-png da imagem principal nao encontrado.');
+  throw clientError('missing_subject_image', 'Arquivo subject-png do cartao nao encontrado.');
 }
 
 function getImageRef(imageId) {
@@ -1217,6 +1241,7 @@ async function recordGenerationFailure({
   await imageRef.set({
     status: 'error',
     error: publicError(error),
+    errorDetails: detailedError(error),
     updatedAt: now,
     generation: {
       active: false,
@@ -1225,8 +1250,16 @@ async function recordGenerationFailure({
       lastDurationMs: durationMs,
       lastTrigger: trigger || '',
       lastError: publicError(error),
+      lastErrorDetails: detailedError(error),
     },
   }, { merge: true });
+
+  await notifyGenerationFailure({
+    imageRef,
+    profile,
+    error,
+    now,
+  });
 
   if (profileId) {
     await getProfileRef(profileId).set({
@@ -1236,6 +1269,44 @@ async function recordGenerationFailure({
           failedCount: FieldValue.increment(1),
         },
       },
+    }, { merge: true });
+  }
+}
+
+async function notifyGenerationFailure({
+  imageRef,
+  profile,
+  error,
+  now,
+}) {
+  if (!profile || !profile.whatsAppAddress) {
+    return;
+  }
+
+  try {
+    const message = await sendWhatsAppText(
+      profile.whatsAppAddress,
+      'Ocorreu um erro ao processar sua foto. Por favor, tente novamente mais tarde.',
+    );
+
+    await imageRef.set({
+      errorNotification: {
+        status: 'sent',
+        messageSid: message.sid || '',
+        sentAt: now,
+      },
+      updatedAt: now,
+    }, { merge: true });
+  } catch (notificationError) {
+    console.error('[whatsapp] failed to notify generation failure', notificationError);
+    await imageRef.set({
+      errorNotification: {
+        status: 'failed',
+        error: publicError(notificationError),
+        errorDetails: detailedError(notificationError),
+        failedAt: now,
+      },
+      updatedAt: now,
     }, { merge: true });
   }
 }
@@ -1508,6 +1579,16 @@ function publicError(error) {
   };
 }
 
+function detailedError(error) {
+  return {
+    code: error.code || 'server_error',
+    name: error.name || 'Error',
+    message: error.message || error.publicMessage || 'Falha ao processar.',
+    publicMessage: error.publicMessage || '',
+    stack: error.stack || '',
+  };
+}
+
 function clientError(code, publicMessage) {
   const error = new Error(publicMessage);
   error.statusCode = 400;
@@ -1536,6 +1617,16 @@ function readIntegerEnv(name, fallback, min, max) {
   }
 
   return Math.min(max, Math.max(min, parsed));
+}
+
+function readBooleanEnv(name, fallback = false) {
+  const value = String(process.env[name] || '').trim().toLowerCase();
+
+  if (!value) {
+    return fallback;
+  }
+
+  return ['1', 'true', 'yes', 'sim', 'on'].includes(value);
 }
 
 module.exports = {

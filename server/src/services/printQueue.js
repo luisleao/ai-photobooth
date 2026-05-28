@@ -87,7 +87,7 @@ async function syncPrintQueueToLocalPending() {
         }
       } catch (error) {
         mainErrors += 1;
-        console.error(`[printer] Falha ao imprimir foto principal ${doc.id}:`, error.message || error);
+        console.error(`[printer] Falha ao imprimir cartao ${doc.id}:`, error.message || error);
         await doc.ref.set({
           status: 'print-error',
           printError: publicError(error),
@@ -242,7 +242,7 @@ async function printMainImage({
   data,
   file,
 }) {
-  console.log('[printer] Imprimindo imagem principal:', printId);
+  console.log('[printer] Imprimindo cartao:', printId);
   const imageUrl = file.signedUrl || file.url || file.final || '';
 
   if (!imageUrl) {
@@ -329,7 +329,7 @@ async function markPrintDone(printRef, printId, data, status, printedFilename) {
       await sendWhatsAppText(
         toWhatsAppAddress(to),
         data.type === 'main'
-          ? 'Sua imagem principal foi impressa e ja pode ser retirada na estacao do photobooth.'
+          ? 'Seu cartao foi impresso e ja pode ser retirado na estacao do photobooth.'
           : 'Seus stickers estao impressos e ja podem ser retirados na estacao do photobooth.',
       );
       notifiedAt = now;

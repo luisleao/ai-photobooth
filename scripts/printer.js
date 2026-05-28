@@ -46,11 +46,11 @@ async function scanQueues() {
     }
 
     if (sync.printed) {
-      console.log(`[printer] ${sync.printed} imagem(ns) principal(is) enviada(s) para impressao.`);
+      console.log(`[printer] ${sync.printed} cartao(oes) enviado(s) para impressao.`);
     }
 
     if (sync.mainErrors) {
-      console.log(`[printer] ${sync.mainErrors} erro(s) ao imprimir foto principal. A fila de stickers continua sendo sincronizada.`);
+      console.log(`[printer] ${sync.mainErrors} erro(s) ao imprimir cartao. A fila de stickers continua sendo sincronizada.`);
     }
 
     if (sync.stickerErrors) {
@@ -58,7 +58,7 @@ async function scanQueues() {
     }
 
     if (sync.mainDisabled) {
-      console.log(`[printer] Impressao local da foto principal desativada (${sync.mainDisabled} item(ns) ignorado(s)).`);
+      console.log(`[printer] Impressao local de cartao desativada (${sync.mainDisabled} item(ns) ignorado(s)).`);
     }
 
     if (sync.stickersDisabled) {

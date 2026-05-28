@@ -25,6 +25,7 @@ const {
   getImageSpecSummaries,
   getMainCompositionAssetPath,
   getMainCompositionConfig,
+  persistGeneratorImageResult,
   saveMainCompositionConfig,
 } = require('./services/generatedImages');
 const {
@@ -47,6 +48,9 @@ const {
 const {
   markPrintDocumentStatus,
 } = require('./services/printQueue');
+const {
+  createPhoneProfileId,
+} = require('./services/phone');
 
 const app = express();
 const publicDir = path.resolve(__dirname, '..', 'public');
@@ -114,6 +118,24 @@ app.get('/manager', (req, res) => {
   res.sendFile(path.join(publicDir, 'manager.html'));
 });
 
+app.get('/search', (req, res, next) => {
+  if (req.path === '/search/') {
+    return next();
+  }
+
+  res.redirect(308, '/search/');
+});
+
+app.get('/search/', (req, res) => {
+  res.sendFile(path.join(publicDir, 'search.html'));
+});
+
+app.get('/search/:phone', (req, res) => {
+  const phone = cleanString(req.params.phone, 80);
+
+  res.redirect(308, `/search/?phone=${encodeURIComponent(phone)}`);
+});
+
 app.get('/api/photobooth/manager/config', async (req, res) => {
   let printLimitPerProfile = null;
   let mainComposition = null;
@@ -135,6 +157,79 @@ app.get('/api/photobooth/manager/config', async (req, res) => {
     mainComposition,
     firebaseConfig: getFirebasePublicConfig(),
   });
+});
+
+app.get('/api/photobooth/search/phone', async (req, res, next) => {
+  try {
+    await verifyFirebaseIdToken(req);
+    const phone = cleanString(req.query && req.query.phone, 80);
+
+    if (!phone) {
+      throw clientError('missing_phone', 'Informe o telefone para busca.');
+    }
+
+    const profile = await findProfileByPhone(phone);
+
+    if (!profile) {
+      res.json({
+        ok: true,
+        found: false,
+        profile: null,
+        images: [],
+      });
+      return;
+    }
+
+    const imagesSnap = await getEventRef()
+      .collection('images')
+      .where('profileId', '==', profile.id)
+      .get();
+    const images = [];
+
+    imagesSnap.forEach((doc) => {
+      images.push({
+        id: doc.id,
+        data: doc.data() || {},
+      });
+    });
+
+    images.sort((a, b) => timestampToMillis(b.data.createdAt) - timestampToMillis(a.data.createdAt));
+
+    res.json({
+      ok: true,
+      found: true,
+      profile,
+      images: images.slice(0, 100),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/photobooth/search/prints', async (req, res, next) => {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+    const imageId = cleanString(req.body && req.body.imageId, 160);
+    const type = cleanString(req.body && req.body.type, 20) || 'stickers';
+
+    if (!imageId) {
+      throw clientError('missing_image_id', 'Informe a imagem para impressao.');
+    }
+
+    const result = await createPrintRequest({
+      imageId,
+      type,
+      participant: {
+        id: user.uid,
+      },
+      source: 'search',
+      requestedBy: user.email || user.uid,
+    });
+
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post('/api/photobooth/manager/prints', async (req, res, next) => {
@@ -356,9 +451,16 @@ app.post('/api/photobooth/generated/clear', async (req, res, next) => {
 
 app.post('/api/photobooth/generate-images', upload.single('sourceImage'), async (req, res, next) => {
   try {
+    const startedAt = Date.now();
+    const params = normalizeGenerationParams(getGenerationParamsFromRequest(req));
     const result = await generateWorldCupImages({
       sourceImage: getSourceImageFromRequest(req),
-      params: normalizeGenerationParams(getGenerationParamsFromRequest(req)),
+      params,
+    });
+    result.persistence = await persistGeneratorResultSafe({
+      result,
+      params,
+      durationMs: Date.now() - startedAt,
     });
 
     res.status(201).json(result);
@@ -369,11 +471,18 @@ app.post('/api/photobooth/generate-images', upload.single('sourceImage'), async 
 
 app.post('/api/photobooth/generate-image', upload.single('sourceImage'), async (req, res, next) => {
   try {
+    const startedAt = Date.now();
+    const params = normalizeGenerationParams(getGenerationParamsFromRequest(req));
     const result = await generateWorldCupImage({
       sourceImage: getSourceImageFromRequest(req),
-      params: normalizeGenerationParams(getGenerationParamsFromRequest(req)),
+      params,
       specId: cleanString(req.body && req.body.specId, 80),
       runId: cleanString(req.body && req.body.runId, 100),
+    });
+    result.persistence = await persistGeneratorResultSafe({
+      result,
+      params,
+      durationMs: Date.now() - startedAt,
     });
 
     res.status(201).json(result);
@@ -381,6 +490,30 @@ app.post('/api/photobooth/generate-image', upload.single('sourceImage'), async (
     next(error);
   }
 });
+
+async function persistGeneratorResultSafe({
+  result,
+  params,
+  durationMs,
+}) {
+  try {
+    return await persistGeneratorImageResult({
+      result,
+      params,
+      durationMs,
+    });
+  } catch (error) {
+    console.error('[generator] failed to persist generated image', error);
+    return {
+      persisted: false,
+      reason: 'persist-failed',
+      error: {
+        code: error.code || 'server_error',
+        message: error.message || 'Falha ao persistir geracao.',
+      },
+    };
+  }
+}
 
 app.post('/api/photobooth/cards', async (req, res, next) => {
   try {
@@ -445,6 +578,90 @@ function parseImageDataUrl(value) {
     buffer,
     mimeType: match[1],
   };
+}
+
+async function findProfileByPhone(phone) {
+  const candidates = buildPhoneCandidates(phone);
+  const profilesRef = getEventRef().collection('profiles');
+  const ids = Array.from(new Set(candidates.map((candidate) => createPhoneProfileId(candidate))));
+
+  for (const id of ids) {
+    const snap = await profilesRef.doc(id).get();
+
+    if (snap.exists) {
+      return {
+        id: snap.id,
+        data: snap.data() || {},
+      };
+    }
+  }
+
+  for (let index = 0; index < candidates.length; index += 10) {
+    const chunk = candidates.slice(index, index + 10);
+
+    if (!chunk.length) {
+      continue;
+    }
+
+    const snap = await profilesRef.where('phoneNumber', 'in', chunk).limit(1).get();
+
+    if (!snap.empty) {
+      const doc = snap.docs[0];
+
+      return {
+        id: doc.id,
+        data: doc.data() || {},
+      };
+    }
+  }
+
+  return null;
+}
+
+function buildPhoneCandidates(value) {
+  const raw = String(value || '').trim();
+  const withoutPrefix = raw.replace(/^whatsapp:/i, '').replace(/\s+/g, '');
+  const digits = withoutPrefix.replace(/[^\d]/g, '');
+  const candidates = new Set();
+
+  if (withoutPrefix) {
+    candidates.add(withoutPrefix);
+  }
+
+  if (digits) {
+    candidates.add(digits);
+    candidates.add(`+${digits}`);
+    candidates.add(`whatsapp:${digits}`);
+    candidates.add(`whatsapp:+${digits}`);
+
+    if ((digits.length === 10 || digits.length === 11) && !digits.startsWith('55')) {
+      candidates.add(`55${digits}`);
+      candidates.add(`+55${digits}`);
+      candidates.add(`whatsapp:+55${digits}`);
+    }
+  }
+
+  return Array.from(candidates).filter(Boolean).slice(0, 20);
+}
+
+function timestampToMillis(value) {
+  if (!value) {
+    return 0;
+  }
+
+  if (typeof value.toMillis === 'function') {
+    return value.toMillis();
+  }
+
+  if (Number.isFinite(value.seconds)) {
+    return value.seconds * 1000 + Math.round((value.nanoseconds || 0) / 1000000);
+  }
+
+  if (Number.isFinite(value._seconds)) {
+    return value._seconds * 1000 + Math.round((value._nanoseconds || 0) / 1000000);
+  }
+
+  return 0;
 }
 
 function clientError(code, publicMessage, statusCode = 400) {

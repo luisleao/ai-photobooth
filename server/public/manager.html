@@ -7,6 +7,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
     <style>
       :root {
         color-scheme: light;
@@ -40,6 +41,10 @@
       }
 
       button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
         border: 0;
         border-radius: 6px;
         padding: 10px 14px;
@@ -59,6 +64,55 @@
 
       button.success {
         background: var(--green);
+      }
+
+      .button-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 0;
+        border-radius: 6px;
+        padding: 10px 14px;
+        color: #fff;
+        background: var(--blue);
+        cursor: pointer;
+        font-weight: 700;
+        line-height: normal;
+        text-decoration: none;
+      }
+
+      button svg,
+      .button-link svg {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+        stroke-width: 2.4;
+      }
+
+      .button-link.secondary {
+        background: #566170;
+      }
+
+      .icon-button {
+        width: 40px;
+        height: 40px;
+        padding: 0;
+      }
+
+      .button-link.icon-button {
+        padding: 0;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
       }
 
       button:disabled {
@@ -249,6 +303,12 @@
         font-size: 12px;
       }
 
+      .participant-actions .icon-button {
+        width: 40px;
+        margin-left: auto;
+        padding: 0;
+      }
+
       .scope-toolbar {
         display: flex;
         flex-wrap: wrap;
@@ -264,8 +324,8 @@
 
       .grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 16px;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 14px;
       }
 
       .package,
@@ -276,24 +336,65 @@
         overflow: hidden;
       }
 
+      .package {
+        border-color: rgb(217 225 232 / 86%);
+        box-shadow: 0 12px 28px rgb(21 32 43 / 8%);
+        transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+      }
+
+      .package:hover {
+        border-color: rgb(23 79 138 / 34%);
+        box-shadow: 0 16px 34px rgb(21 32 43 / 12%);
+        transform: translateY(-2px);
+      }
+
       .preview {
+        position: relative;
         display: grid;
         place-items: center;
-        min-height: 260px;
-        background: #eef3f7;
+        aspect-ratio: 2 / 3;
+        min-height: 0;
+        padding: 0;
+        background: linear-gradient(180deg, #f8fbfd 0%, #edf3f7 100%);
+        overflow: hidden;
       }
 
       .preview img {
+        display: block;
         width: 100%;
-        height: 300px;
+        height: 100%;
         object-fit: contain;
+        border-radius: 0;
+        filter: drop-shadow(0 12px 18px rgb(21 32 43 / 18%));
+      }
+
+      .duration-badge {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 2;
+        min-width: 54px;
+        border-radius: 999px;
+        padding: 5px 9px;
+        color: #fff;
+        background: rgba(8, 14, 24, 0.88);
+        box-shadow: 0 8px 16px rgb(6 16 30 / 18%);
+        font-size: 12px;
+        font-weight: 900;
+        line-height: 1;
+        text-align: center;
       }
 
       .package-body,
       .queue-body {
         display: grid;
-        gap: 12px;
-        padding: 14px;
+        gap: 14px;
+        padding: 16px;
+      }
+
+      .queue-body {
+        gap: 8px;
+        padding: 10px 12px;
       }
 
       .package-title {
@@ -301,6 +402,30 @@
         align-items: flex-start;
         justify-content: space-between;
         gap: 10px;
+      }
+
+      .package-title h3 {
+        font-size: 16px;
+        line-height: 1.2;
+      }
+
+      .package-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .meta-pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 26px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 4px 9px;
+        color: var(--muted);
+        background: #f8fafc;
+        font-size: 12px;
+        font-weight: 800;
       }
 
       .status {
@@ -316,12 +441,28 @@
         white-space: nowrap;
       }
 
+      .status-button {
+        border: 0;
+        cursor: pointer;
+      }
+
+      .status-button:hover {
+        filter: brightness(0.94);
+      }
+
+      .status-row {
+        display: flex;
+        justify-content: center;
+      }
+
       .status.completed,
       .status.printed {
         background: var(--green);
       }
 
       .status.error,
+      .status.completed-with-errors,
+      .status.rejected-limit,
       .status.cancelled {
         background: var(--red);
       }
@@ -335,8 +476,12 @@
 
       .stickers {
         display: grid;
-        grid-template-columns: repeat(5, 1fr);
-        gap: 6px;
+        grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+        gap: 7px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px;
+        background: #f8fafc;
       }
 
       .stickers button {
@@ -355,6 +500,12 @@
         border: 1px solid var(--line);
         border-radius: 6px;
         background: #fff;
+        transition: border-color 160ms ease, transform 160ms ease;
+      }
+
+      .stickers button:hover img {
+        border-color: var(--blue);
+        transform: translateY(-1px);
       }
 
       .zoom-modal {
@@ -370,30 +521,248 @@
       .zoom-frame {
         position: relative;
         display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
         place-items: center;
-        width: min(88vw, 780px);
-        height: min(88vh, 780px);
+        gap: 14px;
+        width: min(92vw, 840px);
+        max-height: min(92vh, 900px);
       }
 
-      .zoom-frame img {
+      .zoom-toolbar,
+      .zoom-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        width: 100%;
+      }
+
+      .zoom-stage {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: min(86vw, 740px);
+        height: min(72vh, 740px);
+        min-height: 280px;
+        box-sizing: border-box;
+        padding: 0 56px;
+        overflow: visible;
+      }
+
+      .zoom-stage img {
+        display: block;
+        width: auto;
+        height: auto;
         max-width: 100%;
         max-height: 100%;
         object-fit: contain;
         background: transparent;
       }
 
-      .zoom-close {
+      .zoom-nav {
         position: absolute;
-        top: 0;
-        right: 0;
-        transform: translateY(-110%);
+        top: 50%;
+        z-index: 2;
+        transform: translateY(-50%);
       }
 
-      .zoom-resend {
-        position: absolute;
+      .zoom-prev {
+        left: 0;
+      }
+
+      .zoom-next {
         right: 0;
-        bottom: 0;
-        transform: translateY(120%);
+      }
+
+      .compare-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 56;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: rgba(6, 16, 30, 0.76);
+      }
+
+      .compare-panel {
+        display: grid;
+        gap: 16px;
+        width: min(96vw, 980px);
+        max-height: 92vh;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+        background: var(--panel);
+        box-shadow: 0 24px 60px rgb(6 16 30 / 28%);
+      }
+
+      .compare-panel-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .compare-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+
+      .compare-frame {
+        display: grid;
+        gap: 10px;
+      }
+
+      .compare-image {
+        display: grid;
+        place-items: center;
+        min-height: 420px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        background: #f8fafc;
+        overflow: hidden;
+      }
+
+      .compare-image img {
+        display: block;
+        width: 100%;
+        max-height: 520px;
+        object-fit: contain;
+      }
+
+      .error-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 57;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: rgba(6, 16, 30, 0.76);
+      }
+
+      .error-panel {
+        display: grid;
+        gap: 14px;
+        width: min(94vw, 760px);
+        max-height: 88vh;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+        background: var(--panel);
+        box-shadow: 0 24px 60px rgb(6 16 30 / 28%);
+      }
+
+      .error-panel-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .error-details {
+        margin: 0;
+        overflow: auto;
+        border: 1px solid #ffd1d1;
+        border-radius: 8px;
+        padding: 14px;
+        color: #351315;
+        background: #fff8f8;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        font-size: 12px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+      }
+
+      .print-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 55;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: rgba(6, 16, 30, 0.72);
+      }
+
+      .print-panel {
+        width: min(94vw, 680px);
+        max-height: 92vh;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+        background: var(--panel);
+        box-shadow: 0 24px 60px rgb(6 16 30 / 28%);
+      }
+
+      .print-panel-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .print-preview {
+        display: grid;
+        grid-template-columns: minmax(180px, 0.85fr) minmax(220px, 1fr);
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .print-preview-card,
+      .print-preview-stickers {
+        display: grid;
+        place-items: center;
+        min-height: 260px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8fafc;
+        overflow: hidden;
+      }
+
+      .print-preview-card {
+        padding: 12px;
+      }
+
+      .print-preview-card img {
+        display: block;
+        width: 100%;
+        height: 260px;
+        object-fit: contain;
+        filter: drop-shadow(0 10px 16px rgb(21 32 43 / 16%));
+      }
+
+      .print-preview-stickers {
+        padding: 10px;
+      }
+
+      .print-preview-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        width: 100%;
+      }
+
+      .print-preview-grid img {
+        width: 100%;
+        aspect-ratio: 1;
+        object-fit: contain;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+      }
+
+      .print-options {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .print-options button {
+        min-height: 64px;
       }
 
       .composition-modal {
@@ -573,6 +942,43 @@
         gap: 8px;
       }
 
+      .package .actions,
+      .queue .actions,
+      .composition-panel-actions .actions {
+        flex-wrap: nowrap;
+      }
+
+      .package .actions {
+        justify-content: space-between;
+        gap: 6px;
+      }
+
+      .package .actions .icon-button,
+      .package .actions .button-link.icon-button {
+        width: 36px;
+        height: 36px;
+        flex: 0 0 36px;
+      }
+
+      .queue .actions {
+        justify-content: flex-end;
+        gap: 6px;
+      }
+
+      .queue .actions .icon-button {
+        width: 32px;
+        height: 32px;
+        flex: 0 0 32px;
+      }
+
+      .queue .package-title h3 {
+        font-size: 14px;
+      }
+
+      .queue .package-title p {
+        font-size: 12px;
+      }
+
       aside {
         position: sticky;
         top: 82px;
@@ -581,7 +987,7 @@
 
       .queue-list {
         display: grid;
-        gap: 12px;
+        gap: 8px;
       }
 
       .hidden {
@@ -615,6 +1021,20 @@
 
         .composition-layout {
           grid-template-columns: 1fr;
+        }
+
+        .print-preview {
+          grid-template-columns: 1fr;
+        }
+
+        .compare-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .zoom-stage {
+          width: 92vw;
+          height: min(68vh, 620px);
+          padding: 0 44px;
         }
       }
     </style>
@@ -650,7 +1070,7 @@
             <strong id="metric-photos-generated">0</strong>
           </div>
           <div class="metric">
-            <span class="muted">Principais impressas</span>
+            <span class="muted">Cartões impressos</span>
             <strong id="metric-main-printed">0</strong>
           </div>
           <div class="metric">
@@ -700,7 +1120,7 @@
             <option value="pending">Pendente</option>
             <option value="waiting-file">Aguardando arquivo</option>
             <option value="queued">Na pasta pending</option>
-            <option value="print-error">Erro na principal</option>
+            <option value="print-error">Erro no cartão</option>
             <option value="queue-error">Erro no sticker</option>
             <option value="printed">Impresso</option>
             <option value="cancelled">Cancelado</option>
@@ -709,7 +1129,7 @@
         </label>
 
         <div class="toolbar">
-          <h2>Foto principal</h2>
+          <h2>Cartão</h2>
           <small id="main-print-count">0 item(ns)</small>
         </div>
         <div class="queue-list" id="main-prints"></div>
@@ -724,17 +1144,100 @@
 
     <div class="zoom-modal hidden" id="zoom-modal" role="dialog" aria-modal="true" aria-label="Sticker ampliado">
       <div class="zoom-frame">
-        <button class="secondary zoom-close" id="zoom-close" type="button">Fechar</button>
-        <img id="zoom-image" alt="" />
-        <button class="success zoom-resend" id="zoom-resend" type="button">Reenviar WhatsApp</button>
+        <div class="zoom-toolbar">
+          <button class="secondary icon-button" id="zoom-close" type="button" aria-label="Fechar" title="Fechar">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="zoom-stage">
+          <button class="secondary icon-button zoom-nav zoom-prev" id="zoom-prev" type="button" aria-label="Sticker anterior" title="Sticker anterior">
+            <i data-lucide="chevron-left"></i>
+          </button>
+          <img id="zoom-image" alt="" />
+          <button class="secondary icon-button zoom-nav zoom-next" id="zoom-next" type="button" aria-label="Próximo sticker" title="Próximo sticker">
+            <i data-lucide="chevron-right"></i>
+          </button>
+        </div>
+        <div class="zoom-footer">
+          <button class="success" id="zoom-resend" type="button">Reenviar WhatsApp</button>
+        </div>
       </div>
     </div>
 
-    <div class="composition-modal hidden" id="composition-modal" role="dialog" aria-modal="true" aria-label="Ajustar imagem principal">
+    <div class="compare-modal hidden" id="compare-modal" role="dialog" aria-modal="true" aria-labelledby="compare-title">
+      <section class="compare-panel">
+        <div class="compare-panel-header">
+          <div>
+            <h2 id="compare-title">Comparar imagens</h2>
+            <p class="muted" id="compare-subtitle"></p>
+          </div>
+          <button class="secondary icon-button" id="compare-close" type="button" aria-label="Fechar" title="Fechar">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="compare-grid">
+          <div class="compare-frame">
+            <h3>Original</h3>
+            <div class="compare-image" id="compare-original">
+              <span class="muted">Original indisponível</span>
+            </div>
+          </div>
+          <div class="compare-frame">
+            <h3>Cartão</h3>
+            <div class="compare-image" id="compare-generated">
+              <span class="muted">Cartão indisponível</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="error-modal hidden" id="error-modal" role="dialog" aria-modal="true" aria-labelledby="error-title">
+      <section class="error-panel">
+        <div class="error-panel-header">
+          <div>
+            <h2 id="error-title">Detalhe do erro</h2>
+            <p class="muted" id="error-subtitle"></p>
+          </div>
+          <button class="secondary icon-button" id="error-close" type="button" aria-label="Fechar" title="Fechar">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <pre class="error-details" id="error-details"></pre>
+      </section>
+    </div>
+
+    <div class="print-modal hidden" id="print-modal" role="dialog" aria-modal="true" aria-labelledby="print-modal-title">
+      <section class="print-panel">
+        <div class="print-panel-header">
+          <div>
+            <h2 id="print-modal-title">Imprimir</h2>
+            <p class="muted" id="print-modal-subtitle"></p>
+          </div>
+          <button class="secondary icon-button" id="print-modal-close" type="button" aria-label="Fechar" title="Fechar">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="print-preview">
+          <div class="print-preview-card" id="print-card-preview">
+            <span class="muted">Cartão indisponível</span>
+          </div>
+          <div class="print-preview-stickers" id="print-stickers-preview">
+            <span class="muted">Stickers indisponíveis</span>
+          </div>
+        </div>
+        <div class="print-options">
+          <button class="secondary" id="print-main-option" type="button">Cartão</button>
+          <button class="success" id="print-stickers-option" type="button">Stickers</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="composition-modal hidden" id="composition-modal" role="dialog" aria-modal="true" aria-label="Ajustar cartão">
       <section class="composition-panel">
         <div class="composition-panel-header">
           <div>
-            <h2 id="composition-title">Ajustar principal</h2>
+            <h2 id="composition-title">Ajustar cartão</h2>
             <p class="muted" id="composition-subtitle"></p>
           </div>
           <button class="secondary" id="composition-close" type="button">Fechar</button>
@@ -747,7 +1250,7 @@
               <img id="composition-subject-image" alt="" />
             </div>
             <img class="composition-layer composition-overlay" id="composition-overlay" alt="" aria-hidden="true" />
-            <div class="composition-control" id="composition-control" aria-label="Area da imagem principal">
+            <div class="composition-control" id="composition-control" aria-label="Área do cartão">
               <span class="composition-handle" data-handle="n" aria-hidden="true"></span>
               <span class="composition-handle" data-handle="e" aria-hidden="true"></span>
               <span class="composition-handle" data-handle="s" aria-hidden="true"></span>
@@ -797,7 +1300,7 @@
           <p class="composition-message" id="composition-message"></p>
           <div class="actions">
             <button class="secondary" id="composition-save-default" type="button">Salvar como padrão</button>
-            <button class="success" id="composition-regenerate" type="button">Regerar principal</button>
+            <button class="success" id="composition-regenerate" type="button">Regerar cartão</button>
           </div>
         </div>
       </section>
@@ -820,6 +1323,11 @@
         printRows: [],
         printStatusFilter: 'open',
         zoomSticker: null,
+        zoomStickerItems: [],
+        zoomStickerIndex: 0,
+        compareDialog: null,
+        errorDialog: null,
+        printDialog: null,
         selectedProfile: null,
         mainCompositionConfig: null,
         mainCompositionDefaults: {
@@ -856,7 +1364,25 @@
       const zoomImage = document.getElementById('zoom-image');
       const zoomClose = document.getElementById('zoom-close');
       const zoomResend = document.getElementById('zoom-resend');
+      const zoomPrev = document.getElementById('zoom-prev');
+      const zoomNext = document.getElementById('zoom-next');
       const logoutButton = document.getElementById('logout-button');
+      const compareModal = document.getElementById('compare-modal');
+      const compareSubtitle = document.getElementById('compare-subtitle');
+      const compareClose = document.getElementById('compare-close');
+      const compareOriginal = document.getElementById('compare-original');
+      const compareGenerated = document.getElementById('compare-generated');
+      const errorModal = document.getElementById('error-modal');
+      const errorSubtitle = document.getElementById('error-subtitle');
+      const errorClose = document.getElementById('error-close');
+      const errorDetails = document.getElementById('error-details');
+      const printModal = document.getElementById('print-modal');
+      const printModalSubtitle = document.getElementById('print-modal-subtitle');
+      const printModalClose = document.getElementById('print-modal-close');
+      const printCardPreview = document.getElementById('print-card-preview');
+      const printStickersPreview = document.getElementById('print-stickers-preview');
+      const printMainOption = document.getElementById('print-main-option');
+      const printStickersOption = document.getElementById('print-stickers-option');
       const compositionModal = document.getElementById('composition-modal');
       const compositionTitle = document.getElementById('composition-title');
       const compositionSubtitle = document.getElementById('composition-subtitle');
@@ -910,6 +1436,13 @@
         clearProfileFilter.addEventListener('click', clearSelectedProfile);
         zoomClose.addEventListener('click', closeStickerZoom);
         zoomResend.addEventListener('click', resendZoomSticker);
+        zoomPrev.addEventListener('click', () => navigateStickerZoom(-1));
+        zoomNext.addEventListener('click', () => navigateStickerZoom(1));
+        compareClose.addEventListener('click', closeCompareDialog);
+        errorClose.addEventListener('click', closeErrorDialog);
+        printModalClose.addEventListener('click', closePrintDialog);
+        printMainOption.addEventListener('click', () => confirmPrintChoice('main'));
+        printStickersOption.addEventListener('click', () => confirmPrintChoice('stickers'));
         compositionClose.addEventListener('click', closeCompositionEditor);
         compositionRegenerate.addEventListener('click', regenerateCompositionImage);
         compositionSaveDefault.addEventListener('click', saveCompositionAsDefault);
@@ -927,6 +1460,21 @@
             closeStickerZoom();
           }
         });
+        compareModal.addEventListener('click', (event) => {
+          if (event.target === compareModal) {
+            closeCompareDialog();
+          }
+        });
+        errorModal.addEventListener('click', (event) => {
+          if (event.target === errorModal) {
+            closeErrorDialog();
+          }
+        });
+        printModal.addEventListener('click', (event) => {
+          if (event.target === printModal) {
+            closePrintDialog();
+          }
+        });
         compositionModal.addEventListener('click', (event) => {
           if (event.target === compositionModal) {
             closeCompositionEditor();
@@ -935,6 +1483,21 @@
         document.addEventListener('keydown', (event) => {
           if (event.key === 'Escape' && !zoomModal.classList.contains('hidden')) {
             closeStickerZoom();
+          }
+          if (!zoomModal.classList.contains('hidden') && event.key === 'ArrowLeft') {
+            navigateStickerZoom(-1);
+          }
+          if (!zoomModal.classList.contains('hidden') && event.key === 'ArrowRight') {
+            navigateStickerZoom(1);
+          }
+          if (event.key === 'Escape' && !compareModal.classList.contains('hidden')) {
+            closeCompareDialog();
+          }
+          if (event.key === 'Escape' && !errorModal.classList.contains('hidden')) {
+            closeErrorDialog();
+          }
+          if (event.key === 'Escape' && !printModal.classList.contains('hidden')) {
+            closePrintDialog();
           }
           if (event.key === 'Escape' && !compositionModal.classList.contains('hidden')) {
             closeCompositionEditor();
@@ -948,6 +1511,7 @@
             login();
           }
         });
+        refreshIcons();
 
         state.auth.onAuthStateChanged((user) => {
           if (user) {
@@ -1039,6 +1603,7 @@
             }
 
             snapshot.forEach((doc) => profilesEl.appendChild(renderProfile(doc.id, doc.data())));
+            refreshIcons();
           }, (error) => {
             profilesEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
           });
@@ -1093,6 +1658,7 @@
         }
 
         rows.forEach((row) => imagesEl.appendChild(renderImage(row.id, row.data)));
+        refreshIcons();
       }
 
       function listenPrints() {
@@ -1133,7 +1699,7 @@
         stickerPrintsEl.innerHTML = '';
 
         if (!mainDocs.length) {
-          mainPrintsEl.innerHTML = '<div class="empty">Nenhuma foto principal neste status.</div>';
+          mainPrintsEl.innerHTML = '<div class="empty">Nenhum cartão neste status.</div>';
         } else {
           mainDocs.forEach((row) => mainPrintsEl.appendChild(renderPrintItem(row.id, row.data)));
         }
@@ -1143,6 +1709,8 @@
         } else {
           stickerDocs.forEach((row) => stickerPrintsEl.appendChild(renderPrintItem(row.id, row.data)));
         }
+
+        refreshIcons();
       }
 
       function matchesPrintStatus(item) {
@@ -1164,21 +1732,26 @@
         const article = document.createElement('article');
         article.className = 'package';
         const mainUrl = getMainImageUrl(item);
+        const originalUrl = getOriginalImageUrl(item);
         const subjectUrl = getMainSubjectUrl(item);
+        const stickerSheetUrl = getStickerSheetUrl(item);
         const stickerItems = getStickerItems(item);
         const participantName = item.profile?.profileName || 'Participante';
         const phone = item.profile?.phoneNumber || '';
+        const status = item.status || 'pending';
+        const isError = isImageErrorStatus(status);
+        const statusMarkup = isError
+          ? `<button type="button" class="status status-button ${escapeAttr(status)}" data-action="show-error" aria-label="Ver detalhe do erro" title="Ver detalhe do erro">${escapeHtml(status)}</button>`
+          : `<span class="status ${escapeAttr(status)}">${escapeHtml(status)}</span>`;
         const generation = item.generation || {};
         const durationLabel = generation.lastDurationMs
-          ? `Geracao: ${formatDuration(generation.lastDurationMs)}`
-          : '';
-        const receivedLabel = generation.lastReceivedToCompletedMs
-          ? `recebida ate pronta: ${formatDuration(generation.lastReceivedToCompletedMs)}`
+          ? formatCompactDuration(generation.lastDurationMs)
           : '';
 
         article.innerHTML = `
           <div class="preview">
-            ${mainUrl ? `<img src="${mainUrl}" alt="${escapeHtml(participantName)}" loading="lazy" />` : '<span class="muted">sem imagem principal</span>'}
+            ${durationLabel ? `<span class="duration-badge">${escapeHtml(durationLabel)}</span>` : ''}
+            ${mainUrl ? `<img src="${mainUrl}" alt="${escapeHtml(participantName)}" loading="lazy" />` : '<span class="muted">sem cartão</span>'}
           </div>
           <div class="package-body">
             <div class="package-title">
@@ -1186,44 +1759,82 @@
                 <h3>${escapeHtml(participantName)}</h3>
                 <p class="muted">${escapeHtml(maskPhone(phone))}</p>
               </div>
-              <span class="status ${escapeAttr(item.status || 'pending')}">${escapeHtml(item.status || 'pending')}</span>
             </div>
-            ${durationLabel ? `<p class="muted">${escapeHtml([durationLabel, receivedLabel].filter(Boolean).join(' · '))}</p>` : ''}
+            <div class="package-meta">
+              ${stickerSheetUrl ? '<span class="meta-pill">sheet pronto</span>' : '<span class="meta-pill">sheet aguardando</span>'}
+            </div>
             <div class="stickers">
-              ${stickerItems.map((sticker) => `
+              ${stickerItems.length ? stickerItems.map((sticker, index) => `
                 <button
                   type="button"
                   data-zoom-src="${escapeHtml(sticker.url)}"
                   data-zoom-image-id="${escapeHtml(imageId)}"
                   data-zoom-output-id="${escapeHtml(sticker.outputId)}"
+                  data-zoom-index="${escapeHtml(index)}"
                 >
                   <img src="${escapeHtml(sticker.url)}" alt="${escapeHtml(sticker.title)}" loading="lazy" />
                 </button>
-              `).join('')}
+              `).join('') : '<span class="muted">stickers indisponiveis</span>'}
+            </div>
+            <div class="status-row">
+              ${statusMarkup}
             </div>
             <div class="actions">
-              <button type="button" class="secondary" data-action="adjust-main" ${subjectUrl ? '' : 'disabled'}>Ajustar principal</button>
-              <button type="button" data-action="regenerate">Regerar</button>
-              <button type="button" class="success" data-action="print-stickers">Imprimir stickers</button>
-              <button type="button" class="secondary" data-action="print-main">Reimprimir principal</button>
+              <button type="button" class="secondary icon-button" data-action="compare-original" ${originalUrl ? '' : 'disabled'} aria-label="Comparar original e cartão" title="Comparar original e cartão"><i data-lucide="image"></i></button>
+              <button type="button" class="icon-button" data-action="regenerate" aria-label="Regerar" title="Regerar"><i data-lucide="refresh-cw"></i></button>
+              ${isError ? '' : `
+                <button type="button" class="secondary icon-button" data-action="adjust-main" ${subjectUrl ? '' : 'disabled'} aria-label="Ajustar cartão" title="Ajustar cartão"><i data-lucide="move"></i></button>
+                <button type="button" class="success icon-button" data-action="print-menu" aria-label="Imprimir" title="Imprimir"><i data-lucide="printer"></i></button>
+                ${stickerSheetUrl
+                  ? `<a class="button-link secondary icon-button" href="${escapeHtml(stickerSheetUrl)}" download target="_blank" rel="noopener" aria-label="Baixar stickers" title="Baixar stickers"><i data-lucide="download"></i></a>`
+                  : '<button type="button" class="secondary icon-button" disabled aria-label="Baixar stickers" title="Baixar stickers"><i data-lucide="download"></i></button>'}
+              `}
             </div>
           </div>
         `;
 
         article.querySelectorAll('[data-zoom-src]').forEach((button) => {
+          const index = Number.parseInt(button.dataset.zoomIndex || '0', 10);
           button.addEventListener('click', () => openStickerZoom({
-            url: button.dataset.zoomSrc,
-            imageId: button.dataset.zoomImageId,
-            outputId: button.dataset.zoomOutputId,
+            items: stickerItems.map((sticker) => ({
+              ...sticker,
+              imageId,
+            })),
+            index: Number.isFinite(index) ? index : 0,
           }));
         });
         const adjustButton = article.querySelector('[data-action="adjust-main"]');
+        const compareButton = article.querySelector('[data-action="compare-original"]');
+        if (compareButton && originalUrl) {
+          compareButton.addEventListener('click', () => openCompareDialog({
+            participantName,
+            originalUrl,
+            mainUrl,
+          }));
+        }
         if (adjustButton && subjectUrl) {
           adjustButton.addEventListener('click', () => openCompositionEditor(imageId, item));
         }
+        const errorButton = article.querySelector('[data-action="show-error"]');
+        if (errorButton) {
+          errorButton.addEventListener('click', () => openErrorDialog({
+            participantName,
+            status,
+            details: buildImageErrorDetails(imageId, item),
+          }));
+        }
         article.querySelector('[data-action="regenerate"]').addEventListener('click', () => regenerateImage(imageId));
-        article.querySelector('[data-action="print-stickers"]').addEventListener('click', () => requestPrint(imageId, 'stickers'));
-        article.querySelector('[data-action="print-main"]').addEventListener('click', () => requestPrint(imageId, 'main'));
+        const printButton = article.querySelector('[data-action="print-menu"]');
+        if (printButton) {
+          printButton.addEventListener('click', () => openPrintDialog({
+            imageId,
+            participantName,
+            mainUrl,
+            stickerItems,
+            mainAvailable: Boolean(mainUrl),
+            stickersAvailable: Boolean(stickerSheetUrl),
+          }));
+        }
 
         return article;
       }
@@ -1264,7 +1875,7 @@
           </div>
           <div class="participant-stat">
             ${formatNumber(prints.mainPrinted)}
-            <span>principal</span>
+            <span>cartões</span>
           </div>
           <div class="participant-stat">
             ${formatNumber(prints.stickersPrinted)}
@@ -1273,11 +1884,13 @@
           <div class="participant-actions">
             <button
               type="button"
-              class="${item.unlimited === true ? 'warning' : 'success'}"
+              class="${item.unlimited === true ? 'warning' : 'success'} icon-button"
               data-action="toggle-unlimited"
               aria-pressed="${item.unlimited === true ? 'true' : 'false'}"
+              aria-label="${item.unlimited === true ? 'Desativar ilimitado' : 'Ativar ilimitado'}"
+              title="${item.unlimited === true ? 'Desativar ilimitado' : 'Ativar ilimitado'}"
             >
-              ${item.unlimited === true ? 'Desativar ilimitado' : 'Ativar ilimitado'}
+              <i data-lucide="${item.unlimited === true ? 'ban' : 'infinity'}"></i>
             </button>
           </div>
         `;
@@ -1349,16 +1962,17 @@
           <div class="queue-body">
             <div class="package-title">
               <div>
-                <h3>${escapeHtml(profile.profileName || printId)}</h3>
+                <h3>${escapeHtml(profile.profileName || 'Participante')}</h3>
                 <p class="muted">${escapeHtml(maskPhone(profile.phoneNumber || ''))}</p>
               </div>
+            </div>
+            <div class="status-row">
               <span class="status ${escapeAttr(item.status || 'pending')}">${escapeHtml(item.status || 'pending')}</span>
             </div>
-            <p class="muted">${escapeHtml(item.type || 'stickers')} · ${escapeHtml(item.pendingFilename || item.imageId || 'aguardando arquivo')}</p>
             <div class="actions">
-              <button type="button" class="secondary" data-status="pending">Pendente</button>
-              <button type="button" class="success" data-status="printed">Impresso</button>
-              <button type="button" class="warning" data-status="cancelled">Cancelar</button>
+              <button type="button" class="secondary icon-button" data-status="pending" aria-label="Marcar como pendente" title="Pendente"><i data-lucide="clock"></i></button>
+              <button type="button" class="success icon-button" data-status="printed" aria-label="Marcar como impresso" title="Impresso"><i data-lucide="check"></i></button>
+              <button type="button" class="warning icon-button" data-status="cancelled" aria-label="Cancelar impressão" title="Cancelar"><i data-lucide="x"></i></button>
             </div>
           </div>
         `;
@@ -1380,6 +1994,149 @@
 
       async function updatePrintStatus(printId, status) {
         await apiPost(`/api/photobooth/manager/prints/${encodeURIComponent(printId)}/status`, { status });
+      }
+
+      function isImageErrorStatus(status) {
+        const normalized = String(status || '').toLowerCase();
+        return normalized.includes('error') || normalized.startsWith('rejected');
+      }
+
+      function buildImageErrorDetails(imageId, item) {
+        const details = {
+          imageId,
+          status: item.status || '',
+          error: item.error || null,
+          errorDetails: item.errorDetails || null,
+          generation: {
+            lastStatus: item.generation?.lastStatus || '',
+            lastTrigger: item.generation?.lastTrigger || '',
+            lastError: item.generation?.lastError || null,
+            lastErrorDetails: item.generation?.lastErrorDetails || null,
+            lastFailedAt: formatTimestamp(item.generation?.lastFailedAt),
+            lastDurationMs: item.generation?.lastDurationMs || null,
+          },
+          partialErrors: item.errors || null,
+          deliveries: extractDeliveryErrors(item.deliveries || {}),
+          notification: item.errorNotification || null,
+        };
+
+        return JSON.stringify(details, null, 2);
+      }
+
+      function extractDeliveryErrors(deliveries) {
+        return Object.fromEntries(Object.entries(deliveries)
+          .filter(([, value]) => value && value.status === 'failed')
+          .map(([key, value]) => [key, value]));
+      }
+
+      function openCompareDialog(options) {
+        state.compareDialog = options || {};
+        compareSubtitle.textContent = options.participantName || '';
+        compareOriginal.innerHTML = options.originalUrl
+          ? `<img src="${escapeHtml(options.originalUrl)}" alt="Foto original" loading="lazy" />`
+          : '<span class="muted">Original indisponível</span>';
+        compareGenerated.innerHTML = options.mainUrl
+          ? `<img src="${escapeHtml(options.mainUrl)}" alt="Cartão gerado" loading="lazy" />`
+          : '<span class="muted">Cartão indisponível</span>';
+        compareModal.classList.remove('hidden');
+        refreshIcons();
+      }
+
+      function closeCompareDialog() {
+        compareModal.classList.add('hidden');
+        compareSubtitle.textContent = '';
+        compareOriginal.innerHTML = '<span class="muted">Original indisponível</span>';
+        compareGenerated.innerHTML = '<span class="muted">Cartão indisponível</span>';
+        state.compareDialog = null;
+      }
+
+      function openErrorDialog(options) {
+        state.errorDialog = options || {};
+        errorSubtitle.textContent = `${options.participantName || 'Participante'} · ${options.status || 'error'}`;
+        errorDetails.textContent = options.details || 'Nenhum detalhe tecnico encontrado para esta imagem.';
+        errorModal.classList.remove('hidden');
+        refreshIcons();
+      }
+
+      function closeErrorDialog() {
+        errorModal.classList.add('hidden');
+        errorSubtitle.textContent = '';
+        errorDetails.textContent = '';
+        state.errorDialog = null;
+      }
+
+      function openPrintDialog(options) {
+        state.printDialog = {
+          imageId: options.imageId,
+          mainAvailable: options.mainAvailable,
+          stickersAvailable: options.stickersAvailable,
+        };
+        printModalSubtitle.textContent = options.participantName || '';
+        renderPrintDialogPreview(options);
+        printMainOption.disabled = !options.mainAvailable;
+        printStickersOption.disabled = !options.stickersAvailable;
+        printModal.classList.remove('hidden');
+        refreshIcons();
+      }
+
+      function closePrintDialog() {
+        printModal.classList.add('hidden');
+        printModalSubtitle.textContent = '';
+        printCardPreview.innerHTML = '<span class="muted">Cartão indisponível</span>';
+        printStickersPreview.innerHTML = '<span class="muted">Stickers indisponíveis</span>';
+        state.printDialog = null;
+        printMainOption.disabled = false;
+        printStickersOption.disabled = false;
+        printMainOption.textContent = 'Cartão';
+        printStickersOption.textContent = 'Stickers';
+      }
+
+      function renderPrintDialogPreview(options) {
+        printCardPreview.innerHTML = options.mainUrl
+          ? `<img src="${escapeHtml(options.mainUrl)}" alt="Cartão" loading="lazy" />`
+          : '<span class="muted">Cartão indisponível</span>';
+
+        const stickers = Array.isArray(options.stickerItems) ? options.stickerItems : [];
+        printStickersPreview.innerHTML = stickers.length
+          ? `
+            <div class="print-preview-grid">
+              ${stickers.map((sticker) => `<img src="${escapeHtml(sticker.url)}" alt="${escapeHtml(sticker.title)}" loading="lazy" />`).join('')}
+            </div>
+          `
+          : '<span class="muted">Stickers indisponíveis</span>';
+      }
+
+      async function confirmPrintChoice(type) {
+        if (!state.printDialog || !state.printDialog.imageId) {
+          return;
+        }
+
+        if (type === 'main' && !state.printDialog.mainAvailable) {
+          return;
+        }
+
+        if (type === 'stickers' && !state.printDialog.stickersAvailable) {
+          return;
+        }
+
+        const button = type === 'main' ? printMainOption : printStickersOption;
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Enviando...';
+
+        try {
+          await requestPrint(state.printDialog.imageId, type);
+          closePrintDialog();
+        } catch (error) {
+          button.disabled = false;
+          button.textContent = originalText;
+        }
+      }
+
+      function refreshIcons() {
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+          window.lucide.createIcons();
+        }
       }
 
       function applyMainCompositionConfig(config) {
@@ -1410,8 +2167,8 @@
           imageId,
           item,
         };
-        compositionTitle.textContent = 'Ajustar principal';
-        compositionSubtitle.textContent = `${participantName} · ${imageId}`;
+        compositionTitle.textContent = 'Ajustar cartão';
+        compositionSubtitle.textContent = participantName;
         compositionSubjectImage.src = subjectUrl;
         compositionMessage.textContent = '';
         compositionRegenerate.disabled = false;
@@ -1438,7 +2195,7 @@
 
         const layout = readCompositionInputs();
         compositionRegenerate.disabled = true;
-        compositionMessage.textContent = 'Recompondo imagem principal.';
+        compositionMessage.textContent = 'Recompondo cartão.';
 
         try {
           await apiPost(
@@ -1447,7 +2204,7 @@
           );
           compositionMessage.textContent = 'Principal recomposta e enviada por WhatsApp.';
         } catch (error) {
-          compositionMessage.textContent = error.message || 'Falha ao recompor principal.';
+          compositionMessage.textContent = error.message || 'Falha ao recompor cartão.';
         } finally {
           compositionRegenerate.disabled = false;
         }
@@ -1673,21 +2430,64 @@
       }
 
       function openStickerZoom(sticker) {
-        if (!sticker || !sticker.url) {
+        const items = Array.isArray(sticker?.items)
+          ? sticker.items.filter((item) => item && item.url)
+          : sticker && sticker.url
+            ? [sticker]
+            : [];
+
+        if (!items.length) {
+          return;
+        }
+
+        const requestedIndex = Number.parseInt(sticker.index || 0, 10);
+        state.zoomStickerItems = items;
+        state.zoomStickerIndex = Number.isFinite(requestedIndex)
+          ? Math.min(Math.max(requestedIndex, 0), items.length - 1)
+          : 0;
+        zoomModal.classList.remove('hidden');
+        renderZoomSticker();
+        refreshIcons();
+      }
+
+      function renderZoomSticker() {
+        const items = state.zoomStickerItems || [];
+        const sticker = items[state.zoomStickerIndex] || null;
+
+        if (!sticker) {
+          closeStickerZoom();
           return;
         }
 
         state.zoomSticker = sticker;
         zoomImage.src = sticker.url;
+        zoomImage.alt = sticker.title || 'Sticker ampliado';
+        zoomPrev.disabled = items.length < 2;
+        zoomNext.disabled = items.length < 2;
         zoomResend.disabled = !sticker.imageId || !sticker.outputId;
         zoomResend.textContent = 'Reenviar WhatsApp';
-        zoomModal.classList.remove('hidden');
+      }
+
+      function navigateStickerZoom(delta) {
+        const items = state.zoomStickerItems || [];
+
+        if (items.length < 2) {
+          return;
+        }
+
+        state.zoomStickerIndex = (state.zoomStickerIndex + delta + items.length) % items.length;
+        renderZoomSticker();
       }
 
       function closeStickerZoom() {
         zoomModal.classList.add('hidden');
         zoomImage.removeAttribute('src');
+        zoomImage.removeAttribute('alt');
         state.zoomSticker = null;
+        state.zoomStickerItems = [];
+        state.zoomStickerIndex = 0;
+        zoomPrev.disabled = false;
+        zoomNext.disabled = false;
         zoomResend.disabled = false;
         zoomResend.textContent = 'Reenviar WhatsApp';
       }
@@ -1741,19 +2541,30 @@
       }
 
       function getMainImageUrl(item) {
-        return Object.values(item.outputs || {})
+        const file = Object.values(item.outputs || {})
           .find((output) => output.kind === 'main')
           ?.files
-          ?.find((file) => file.type === 'print-png')
-          ?.signedUrl || '';
+          ?.find((item) => item.type === 'print-png');
+
+        return getFileUrl(file);
+      }
+
+      function getOriginalImageUrl(item) {
+        return item.source?.originalStorage?.signedUrl
+          || item.source?.optimizedStorage?.signedUrl
+          || item.source?.originalUrl
+          || item.source?.optimizedUrl
+          || item.mediaUrl
+          || '';
       }
 
       function getMainSubjectUrl(item) {
-        return Object.values(item.outputs || {})
+        const file = Object.values(item.outputs || {})
           .find((output) => output.kind === 'main')
           ?.files
-          ?.find((file) => file.type === 'subject-png')
-          ?.signedUrl || '';
+          ?.find((item) => item.type === 'subject-png');
+
+        return getFileUrl(file);
       }
 
       function getImageComposition(item) {
@@ -1769,8 +2580,8 @@
         return Object.values(item.outputs || {})
           .filter((output) => output.kind === 'sticker')
           .map((output) => {
-            const file = output.files?.find((item) => item.type === 'webp' && item.signedUrl)
-              || output.files?.find((item) => item.signedUrl);
+            const file = output.files?.find((item) => item.type === 'webp' && getFileUrl(item))
+              || output.files?.find((item) => getFileUrl(item));
 
             if (!file) {
               return null;
@@ -1779,11 +2590,19 @@
             return {
               outputId: output.id,
               title: output.title || output.id,
-              url: file.signedUrl,
+              url: getFileUrl(file),
             };
           })
           .filter((item) => item && item.url && item.outputId)
           .slice(0, 10);
+      }
+
+      function getStickerSheetUrl(item) {
+        return getFileUrl(item.stickerSheet);
+      }
+
+      function getFileUrl(file) {
+        return file?.signedUrl || file?.url || '';
       }
 
       function readNumber(value, fallback) {
@@ -1867,6 +2686,13 @@
         return `${seconds}s`;
       }
 
+      function formatCompactDuration(ms) {
+        const totalSeconds = Math.max(0, Math.round(Number(ms || 0) / 1000));
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${minutes}'${String(seconds).padStart(2, '0')}"`;
+      }
+
       function timestampToMillis(value) {
         if (!value) {
           return 0;
@@ -1881,6 +2707,11 @@
         }
 
         return Number(value) || 0;
+      }
+
+      function formatTimestamp(value) {
+        const millis = timestampToMillis(value);
+        return millis ? new Date(millis).toISOString() : '';
       }
     </script>
   </body>

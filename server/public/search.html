@@ -1,0 +1,1007 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Photobooth Search</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@25.3.1/build/css/intlTelInput.css" />
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@25.3.1/build/js/intlTelInput.min.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #15202b;
+        --muted: #687585;
+        --line: #d9e1e8;
+        --panel: #ffffff;
+        --surface: #f4f7fa;
+        --green: #087443;
+        --blue: #174f8a;
+        --yellow: #ffd447;
+        --red: #bd2734;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        background: var(--surface);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      button {
+        border: 0;
+        border-radius: 6px;
+        padding: 10px 14px;
+        color: #fff;
+        background: var(--blue);
+        cursor: pointer;
+        font-weight: 700;
+      }
+
+      button.secondary {
+        background: #566170;
+      }
+
+      button.success {
+        background: var(--green);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      input {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 11px 12px;
+        background: #fff;
+      }
+
+      .iti {
+        width: 100%;
+      }
+
+      .iti input {
+        width: 100%;
+      }
+
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 18px 24px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.94);
+        backdrop-filter: blur(10px);
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 22px;
+        line-height: 1.2;
+      }
+
+      main {
+        display: grid;
+        gap: 18px;
+        padding: 20px 24px 32px;
+      }
+
+      .auth {
+        max-width: 380px;
+        margin: 12vh auto 0;
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .auth h2 {
+        margin-bottom: 16px;
+        font-size: 20px;
+      }
+
+      .auth label,
+      .search-box label {
+        display: grid;
+        gap: 6px;
+        font-weight: 700;
+      }
+
+      .auth label {
+        margin-bottom: 14px;
+      }
+
+      .auth button {
+        width: 100%;
+        margin-top: 4px;
+      }
+
+      .search-box {
+        display: grid;
+        grid-template-columns: minmax(260px, 460px) auto;
+        gap: 12px;
+        align-items: end;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+        background: var(--panel);
+        box-shadow: 0 10px 24px rgb(21 32 43 / 6%);
+      }
+
+      .profile-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px 16px;
+        background: var(--panel);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+        gap: 18px;
+      }
+
+      .package {
+        border: 1px solid rgb(217 225 232 / 86%);
+        border-radius: 8px;
+        background: var(--panel);
+        overflow: hidden;
+        box-shadow: 0 12px 28px rgb(21 32 43 / 8%);
+        transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+      }
+
+      .package:hover {
+        border-color: rgb(23 79 138 / 34%);
+        box-shadow: 0 16px 34px rgb(21 32 43 / 12%);
+        transform: translateY(-2px);
+      }
+
+      .image-showcase {
+        display: grid;
+        grid-template-columns: minmax(150px, 0.9fr) minmax(170px, 1fr);
+        gap: 12px;
+        padding: 14px;
+        background: linear-gradient(180deg, #f8fbfd 0%, #edf3f7 100%);
+      }
+
+      .main-preview,
+      .sticker-preview {
+        display: grid;
+        place-items: center;
+        min-height: 280px;
+        border: 1px solid rgb(217 225 232 / 84%);
+        border-radius: 8px;
+        background: #fff;
+        overflow: hidden;
+      }
+
+      .main-preview[role="button"],
+      .sticker-preview[role="button"] {
+        cursor: pointer;
+      }
+
+      .main-preview[role="button"]:hover,
+      .main-preview[role="button"]:focus-visible,
+      .sticker-preview[role="button"]:hover,
+      .sticker-preview[role="button"]:focus-visible {
+        border-color: var(--blue);
+        outline: none;
+        box-shadow: 0 0 0 3px rgb(23 79 138 / 12%);
+      }
+
+      .main-preview img {
+        width: 100%;
+        height: 310px;
+        object-fit: contain;
+      }
+
+      .sticker-preview {
+        padding: 10px;
+      }
+
+      .sticker-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        width: 100%;
+      }
+
+      .sticker-grid img {
+        width: 100%;
+        aspect-ratio: 1;
+        object-fit: contain;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+      }
+
+      .package-body {
+        display: grid;
+        gap: 14px;
+        padding: 16px;
+      }
+
+      .package-title {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        border-radius: 999px;
+        padding: 3px 9px;
+        color: #fff;
+        background: #637083;
+        font-size: 12px;
+        font-weight: 800;
+        white-space: nowrap;
+      }
+
+      .status.completed,
+      .status.printed {
+        background: var(--green);
+      }
+
+      .status.error,
+      .status.cancelled {
+        background: var(--red);
+      }
+
+      .status.pending,
+      .status.queued,
+      .status.waiting-file {
+        color: #162033;
+        background: var(--yellow);
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .search-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .print-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: rgba(6, 16, 30, 0.72);
+      }
+
+      .print-panel {
+        width: min(92vw, 420px);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+        background: var(--panel);
+        box-shadow: 0 24px 60px rgb(6 16 30 / 28%);
+      }
+
+      .print-panel-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .print-options {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .print-options button {
+        min-height: 60px;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      .empty {
+        padding: 24px;
+        border: 1px dashed var(--line);
+        border-radius: 8px;
+        color: var(--muted);
+        background: #fff;
+      }
+
+      @media (max-width: 720px) {
+        .search-box,
+        .profile-summary {
+          grid-template-columns: 1fr;
+        }
+
+        .profile-summary {
+          display: grid;
+        }
+
+        .image-showcase {
+          grid-template-columns: 1fr;
+        }
+
+        .search-actions {
+          display: grid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Busca de Fotos</h1>
+        <p class="muted" id="event-label"></p>
+      </div>
+      <button class="secondary hidden" id="logout-button" type="button">Sair</button>
+    </header>
+
+    <section class="auth" id="auth-panel">
+      <h2>Entrar</h2>
+      <label>
+        Email
+        <input id="email" type="email" autocomplete="email" />
+      </label>
+      <label>
+        Senha
+        <input id="password" type="password" autocomplete="current-password" />
+      </label>
+      <button id="login-button" type="button">Entrar</button>
+      <p class="muted" id="auth-message"></p>
+    </section>
+
+    <main class="hidden" id="search-panel">
+      <form class="search-box" id="search-form">
+        <label>
+          Telefone
+          <input id="phone-input" type="tel" autocomplete="tel" placeholder="DDD + numero" />
+        </label>
+        <div class="search-actions">
+          <button id="search-button" type="submit">Buscar fotos</button>
+          <button class="secondary" id="reset-button" type="button">Limpar</button>
+        </div>
+      </form>
+
+      <section class="profile-summary hidden" id="profile-summary">
+        <div>
+          <h2 id="profile-name">Participante</h2>
+          <p class="muted" id="profile-phone"></p>
+        </div>
+        <strong id="image-count">0 imagem(ns)</strong>
+      </section>
+
+      <div id="message" class="empty">Informe o telefone para buscar as fotos.</div>
+      <div class="grid" id="images"></div>
+    </main>
+
+    <div class="print-modal hidden" id="print-modal" role="dialog" aria-modal="true" aria-labelledby="print-modal-title">
+      <section class="print-panel">
+        <div class="print-panel-header">
+          <div>
+            <h2 id="print-modal-title">Imprimir</h2>
+            <p class="muted" id="print-modal-subtitle"></p>
+          </div>
+          <button class="secondary" id="print-modal-close" type="button">Fechar</button>
+        </div>
+        <div class="print-options">
+          <button class="secondary" id="print-card-option" type="button">Cartão</button>
+          <button class="success" id="print-stickers-option" type="button">Stickers</button>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const state = {
+        auth: null,
+        eventId: '',
+        initialPhone: '',
+        initialSearchDone: false,
+        phoneInputPlugin: null,
+        printDialog: null,
+      };
+
+      const authPanel = document.getElementById('auth-panel');
+      const searchPanel = document.getElementById('search-panel');
+      const authMessage = document.getElementById('auth-message');
+      const logoutButton = document.getElementById('logout-button');
+      const searchForm = document.getElementById('search-form');
+      const phoneInput = document.getElementById('phone-input');
+      const searchButton = document.getElementById('search-button');
+      const resetButton = document.getElementById('reset-button');
+      const profileSummary = document.getElementById('profile-summary');
+      const profileName = document.getElementById('profile-name');
+      const profilePhone = document.getElementById('profile-phone');
+      const imageCount = document.getElementById('image-count');
+      const message = document.getElementById('message');
+      const imagesEl = document.getElementById('images');
+      const printModal = document.getElementById('print-modal');
+      const printModalSubtitle = document.getElementById('print-modal-subtitle');
+      const printModalClose = document.getElementById('print-modal-close');
+      const printCardOption = document.getElementById('print-card-option');
+      const printStickersOption = document.getElementById('print-stickers-option');
+
+      boot();
+
+      async function boot() {
+        initPhoneInput();
+        state.initialPhone = readInitialPhone();
+        if (state.initialPhone) {
+          setPhoneValue(state.initialPhone);
+        }
+
+        const configResponse = await fetch('/api/photobooth/manager/config');
+        const config = await configResponse.json();
+
+        state.eventId = config.eventId;
+        document.getElementById('event-label').textContent = config.firestoreRoot;
+
+        if (!config.firebaseConfig || !config.firebaseConfig.apiKey) {
+          authMessage.textContent = 'Firebase publico nao configurado no ambiente.';
+          return;
+        }
+
+        firebase.initializeApp(config.firebaseConfig);
+        state.auth = firebase.auth();
+
+        document.getElementById('login-button').addEventListener('click', login);
+        document.getElementById('password').addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') {
+            login();
+          }
+        });
+        logoutButton.addEventListener('click', () => state.auth.signOut());
+        searchForm.addEventListener('submit', searchPhotos);
+        resetButton.addEventListener('click', resetSearch);
+        printModalClose.addEventListener('click', closePrintDialog);
+        printCardOption.addEventListener('click', () => confirmPrintChoice('main'));
+        printStickersOption.addEventListener('click', () => confirmPrintChoice('stickers'));
+        printModal.addEventListener('click', (event) => {
+          if (event.target === printModal) {
+            closePrintDialog();
+          }
+        });
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !printModal.classList.contains('hidden')) {
+            closePrintDialog();
+          }
+        });
+
+        state.auth.onAuthStateChanged((user) => {
+          if (user) {
+            authPanel.classList.add('hidden');
+            searchPanel.classList.remove('hidden');
+            logoutButton.classList.remove('hidden');
+            if (state.initialPhone && !state.initialSearchDone) {
+              state.initialSearchDone = true;
+              searchPhotos();
+            }
+          } else {
+            authPanel.classList.remove('hidden');
+            searchPanel.classList.add('hidden');
+            logoutButton.classList.add('hidden');
+            clearResults();
+          }
+        });
+      }
+
+      async function login() {
+        authMessage.textContent = '';
+
+        try {
+          await state.auth.signInWithEmailAndPassword(
+            document.getElementById('email').value,
+            document.getElementById('password').value,
+          );
+        } catch (error) {
+          authMessage.textContent = error.message;
+        }
+      }
+
+      async function searchPhotos(event) {
+        if (event) {
+          event.preventDefault();
+        }
+        const phone = getPhoneValue();
+
+        if (!phone) {
+          showMessage('Informe um telefone para buscar.', true);
+          return;
+        }
+
+        searchButton.disabled = true;
+        searchButton.textContent = 'Buscando...';
+        clearResults();
+        showMessage('Buscando fotos...', true);
+
+        try {
+          const token = await state.auth.currentUser.getIdToken();
+          const response = await fetch(`/api/photobooth/search/phone?phone=${encodeURIComponent(phone)}`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+          const payload = await response.json().catch(() => ({ message: response.statusText }));
+
+          if (!response.ok) {
+            throw new Error(payload.message || 'Falha ao buscar fotos.');
+          }
+
+          renderSearchResult(payload);
+        } catch (error) {
+          showMessage(error.message || 'Falha ao buscar fotos.', true);
+        } finally {
+          searchButton.disabled = false;
+          searchButton.textContent = 'Buscar fotos';
+        }
+      }
+
+      function renderSearchResult(payload) {
+        clearResults();
+
+        if (!payload.found) {
+          showMessage('Nenhuma foto encontrada para este telefone.', true);
+          return;
+        }
+
+        const profile = payload.profile?.data || {};
+        const rows = (Array.isArray(payload.images) ? payload.images : [])
+          .filter((row) => !isErroredImage(row.data || {}));
+
+        profileSummary.classList.remove('hidden');
+        profileName.textContent = profile.profileName || profile.whatsappProfile?.profileName || 'Participante';
+        profilePhone.textContent = maskPhone(profile.phoneNumber || '');
+        imageCount.textContent = `${rows.length} imagem(ns)`;
+
+        if (!rows.length) {
+          showMessage('Participante encontrado, mas nao ha imagens prontas para exibicao.', true);
+          return;
+        }
+
+        message.classList.add('hidden');
+        rows.forEach((row) => imagesEl.appendChild(renderImage(row.id, row.data || {})));
+      }
+
+      function renderImage(imageId, item) {
+        const article = document.createElement('article');
+        article.className = 'package';
+        const mainUrl = getMainImageUrl(item);
+        const stickerSheetUrl = getStickerSheetUrl(item);
+        const stickerItems = getStickerItems(item);
+        const created = formatDate(item.createdAt);
+
+        article.innerHTML = `
+          <div class="image-showcase">
+            <div
+              class="main-preview"
+              role="button"
+              tabindex="0"
+              data-action="open-print-dialog"
+              aria-label="Escolher impressao deste cartão"
+            >
+              ${mainUrl ? `<img src="${escapeHtml(mainUrl)}" alt="Cartão" loading="lazy" />` : '<span class="muted">sem cartão</span>'}
+            </div>
+            <div
+              class="sticker-preview"
+              role="button"
+              tabindex="0"
+              data-action="open-print-dialog"
+              aria-label="Escolher impressao destes stickers"
+            >
+              ${stickerItems.length ? `
+                <div class="sticker-grid">
+                  ${stickerItems.map((sticker) => `<img src="${escapeHtml(sticker.url)}" alt="${escapeHtml(sticker.title)}" loading="lazy" />`).join('')}
+                </div>
+              ` : '<span class="muted">stickers indisponiveis</span>'}
+            </div>
+          </div>
+          <div class="package-body">
+            <div class="package-title">
+              <div>
+                <p class="muted">${escapeHtml(created || 'Sem data registrada')}</p>
+              </div>
+              <span class="status ${escapeAttr(item.status || 'pending')}">${escapeHtml(item.status || 'pending')}</span>
+            </div>
+            <div class="actions">
+              <button type="button" class="secondary" data-action="open-print-dialog" ${mainUrl || stickerSheetUrl ? '' : 'disabled'}>Imprimir</button>
+            </div>
+          </div>
+        `;
+
+        article.querySelectorAll('[data-action="open-print-dialog"]').forEach((element) => {
+          element.addEventListener('click', () => openPrintDialog({
+            imageId,
+            created,
+            mainAvailable: Boolean(mainUrl),
+            stickersAvailable: Boolean(stickerSheetUrl),
+          }));
+          element.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              openPrintDialog({
+                imageId,
+                created,
+                mainAvailable: Boolean(mainUrl),
+                stickersAvailable: Boolean(stickerSheetUrl),
+              });
+            }
+          });
+        });
+
+        return article;
+      }
+
+      function openPrintDialog(options) {
+        state.printDialog = {
+          imageId: options.imageId,
+          mainAvailable: options.mainAvailable,
+          stickersAvailable: options.stickersAvailable,
+        };
+        printModalSubtitle.textContent = options.created || '';
+        printCardOption.disabled = !options.mainAvailable;
+        printStickersOption.disabled = !options.stickersAvailable;
+        printModal.classList.remove('hidden');
+      }
+
+      function closePrintDialog() {
+        printModal.classList.add('hidden');
+        printModalSubtitle.textContent = '';
+        state.printDialog = null;
+        printCardOption.disabled = false;
+        printStickersOption.disabled = false;
+        printCardOption.textContent = 'Cartão';
+        printStickersOption.textContent = 'Stickers';
+      }
+
+      async function confirmPrintChoice(type) {
+        if (!state.printDialog || !state.printDialog.imageId) {
+          return;
+        }
+
+        if (type === 'main' && !state.printDialog.mainAvailable) {
+          return;
+        }
+
+        if (type === 'stickers' && !state.printDialog.stickersAvailable) {
+          return;
+        }
+
+        const button = type === 'main' ? printCardOption : printStickersOption;
+
+        try {
+          await requestPrint(state.printDialog.imageId, type, button);
+          closePrintDialog();
+        } catch (error) {
+          // requestPrint already restores the button state.
+        }
+      }
+
+      async function requestPrint(imageId, type, button) {
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Enviando...';
+
+        try {
+          await apiPost('/api/photobooth/search/prints', { imageId, type });
+          button.textContent = 'Enviado';
+          setTimeout(() => {
+            button.disabled = false;
+            button.textContent = originalText;
+          }, 1400);
+        } catch (error) {
+          button.disabled = false;
+          button.textContent = originalText;
+          throw error;
+        }
+      }
+
+      async function apiPost(url, body) {
+        const token = await state.auth.currentUser.getIdToken();
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        });
+        const payload = await response.json().catch(() => ({ message: response.statusText }));
+
+        if (!response.ok) {
+          alert(payload.message || 'Falha ao executar acao.');
+          throw new Error(payload.message || 'Falha ao executar acao.');
+        }
+
+        return payload;
+      }
+
+      function clearResults() {
+        imagesEl.innerHTML = '';
+        profileSummary.classList.add('hidden');
+        showMessage('Informe o telefone para buscar as fotos.', true);
+      }
+
+      function resetSearch() {
+        state.initialPhone = '';
+        state.initialSearchDone = false;
+
+        if (state.phoneInputPlugin) {
+          state.phoneInputPlugin.setNumber('');
+        }
+
+        phoneInput.value = '';
+        closePrintDialog();
+        clearResults();
+
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState({}, '', '/search/');
+        }
+
+        phoneInput.focus();
+      }
+
+      function showMessage(text, visible) {
+        message.textContent = text;
+        message.classList.toggle('hidden', !visible);
+      }
+
+      function getMainImageUrl(item) {
+        return Object.values(item.outputs || {})
+          .find((output) => output.kind === 'main')
+          ?.files
+          ?.find((file) => file.type === 'print-png')
+          ?.signedUrl || '';
+      }
+
+      function getStickerSheetUrl(item) {
+        return item.stickerSheet?.signedUrl || '';
+      }
+
+      function getStickerItems(item) {
+        return Object.values(item.outputs || {})
+          .filter((output) => output.kind === 'sticker')
+          .map((output) => {
+            const file = output.files?.find((item) => item.type === 'webp' && item.signedUrl)
+              || output.files?.find((item) => item.signedUrl);
+
+            if (!file) {
+              return null;
+            }
+
+            return {
+              outputId: output.id,
+              title: output.title || output.id,
+              url: file.signedUrl,
+            };
+          })
+          .filter((item) => item && item.url)
+          .slice(0, 10);
+      }
+
+      function isErroredImage(item) {
+        const status = String(item.status || '').toLowerCase();
+
+        return status.includes('error')
+          || status.startsWith('rejected')
+          || status === 'failed'
+          || status === 'cancelled';
+      }
+
+      function maskPhone(phone) {
+        const text = String(phone || '').replace(/^whatsapp:/, '');
+
+        if (text.length < 9) {
+          return text;
+        }
+
+        return `${text.slice(0, -8)}****-${text.slice(-4)}`;
+      }
+
+      function formatDate(value) {
+        const ms = timestampToMillis(value);
+
+        if (!ms) {
+          return '';
+        }
+
+        return new Date(ms).toLocaleString('pt-BR', {
+          day: '2-digit',
+          month: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      }
+
+      function timestampToMillis(value) {
+        if (!value) {
+          return 0;
+        }
+
+        if (Number.isFinite(value.seconds)) {
+          return value.seconds * 1000 + Math.round((value.nanoseconds || 0) / 1000000);
+        }
+
+        if (Number.isFinite(value._seconds)) {
+          return value._seconds * 1000 + Math.round((value._nanoseconds || 0) / 1000000);
+        }
+
+        return 0;
+      }
+
+      function escapeHtml(value) {
+        return String(value || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function escapeAttr(value) {
+        return String(value || '').replace(/[^a-zA-Z0-9_-]+/g, '-');
+      }
+
+      function initPhoneInput() {
+        if (!window.intlTelInput) {
+          return;
+        }
+
+        state.phoneInputPlugin = window.intlTelInput(phoneInput, {
+          initialCountry: 'br',
+          preferredCountries: ['br'],
+          separateDialCode: true,
+          nationalMode: true,
+          autoPlaceholder: 'aggressive',
+          customPlaceholder: (placeholder, country) => (
+            stripDialCodeFromPhoneText(placeholder, country?.dialCode || '55') || 'DDD + numero'
+          ),
+        });
+        phoneInput.placeholder = 'DDD + numero';
+        phoneInput.addEventListener('countrychange', () => {
+          normalizePhoneDisplay();
+          phoneInput.placeholder = stripDialCodeFromPhoneText(
+            phoneInput.placeholder,
+            state.phoneInputPlugin?.getSelectedCountryData()?.dialCode || '55',
+          ) || 'DDD + numero';
+        });
+        phoneInput.addEventListener('blur', normalizePhoneDisplay);
+      }
+
+      function setPhoneValue(value) {
+        const text = String(value || '').trim();
+
+        if (state.phoneInputPlugin && text) {
+          state.phoneInputPlugin.setNumber(text);
+          normalizePhoneDisplay();
+          return;
+        }
+
+        phoneInput.value = stripDialCodeFromPhoneText(text);
+      }
+
+      function getPhoneValue() {
+        const raw = phoneInput.value.trim();
+
+        if (!state.phoneInputPlugin) {
+          return raw;
+        }
+
+        if (/^\+/.test(raw)) {
+          return raw;
+        }
+
+        const digits = raw.replace(/[^\d]/g, '');
+        const country = state.phoneInputPlugin.getSelectedCountryData() || {};
+        const dialCode = country.dialCode || '55';
+
+        if (!digits) {
+          return raw;
+        }
+
+        if (digits.startsWith(dialCode)) {
+          return `+${digits}`;
+        }
+
+        return `+${dialCode}${digits}`;
+      }
+
+      function normalizePhoneDisplay() {
+        const country = state.phoneInputPlugin?.getSelectedCountryData() || {};
+        const next = stripDialCodeFromPhoneText(phoneInput.value, country.dialCode || '55');
+
+        if (next && next !== phoneInput.value.trim()) {
+          phoneInput.value = next;
+        }
+      }
+
+      function stripDialCodeFromPhoneText(value, dialCode = '55') {
+        const text = String(value || '')
+          .replace(/^whatsapp:/i, '')
+          .trim();
+        const cleanDialCode = String(dialCode || '55').replace(/[^\d]/g, '');
+
+        if (!text || !cleanDialCode) {
+          return text;
+        }
+
+        if (text.startsWith(`+${cleanDialCode}`)) {
+          return text
+            .slice(cleanDialCode.length + 1)
+            .trim()
+            .replace(/^[\s.-]+/, '');
+        }
+
+        if (text.startsWith(`00${cleanDialCode}`)) {
+          return text
+            .slice(cleanDialCode.length + 2)
+            .trim()
+            .replace(/^[\s.-]+/, '');
+        }
+
+        const digits = text.replace(/[^\d]/g, '');
+
+        if (digits.length > 11 && digits.startsWith(cleanDialCode)) {
+          return digits.slice(cleanDialCode.length);
+        }
+
+        return text;
+      }
+
+      function readInitialPhone() {
+        const params = new URLSearchParams(window.location.search);
+        const fromQuery = params.get('phone') || '';
+
+        if (fromQuery) {
+          return fromQuery;
+        }
+
+        const match = window.location.pathname.match(/^\/search\/(.+)$/);
+
+        return match ? decodeURIComponent(match[1]) : '';
+      }
+    </script>
+  </body>
+</html>

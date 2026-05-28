@@ -3,10 +3,12 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const sharp = require('sharp');
 const {
+  FieldValue,
   Timestamp,
   getEventId,
   getEventRef,
   isFirebaseConfigured,
+  uploadFileToStorage,
 } = require('./firebaseAdmin');
 const {
   MAIN_IMAGE_ID,
@@ -199,6 +201,155 @@ async function clearGeneratedImages() {
   };
 }
 
+async function persistGeneratorImageResult({
+  result,
+  params = {},
+  durationMs = null,
+}) {
+  if (!isFirebaseConfigured() || !result || !result.runId) {
+    return {
+      persisted: false,
+      reason: isFirebaseConfigured() ? 'missing-result' : 'firebase-not-configured',
+    };
+  }
+
+  const runId = normalizeRunId(result.runId);
+
+  if (!runId) {
+    return {
+      persisted: false,
+      reason: 'invalid-run-id',
+    };
+  }
+
+  const imageId = `generator-${runId}`;
+  const imageRef = getEventRef().collection('images').doc(imageId);
+  const imageSnap = await imageRef.get();
+  const isNew = !imageSnap.exists;
+  const now = Timestamp.now();
+  const outputDir = path.join(GENERATED_ROOT, runId);
+  const outputs = normalizeResultOutputs(result);
+  const uploadedOutputs = {};
+  let stickerSheet = null;
+
+  for (const output of outputs) {
+    const uploadedFiles = [];
+
+    for (const file of output.files || []) {
+      const localPath = path.join(outputDir, file.name);
+
+      try {
+        await fs.access(localPath);
+      } catch (error) {
+        uploadedFiles.push(file);
+        continue;
+      }
+
+      const upload = await uploadFileToStorage({
+        localPath,
+        destination: `images/${imageId}/generated/${file.name}`,
+        contentType: contentTypeForGeneratedFile(file),
+        metadata: {
+          imageId,
+          outputId: output.id,
+          fileType: file.type || '',
+          source: 'generator',
+        },
+      });
+
+      const uploadedFile = {
+        ...file,
+        ...upload,
+      };
+
+      if (file.type === 'sticker-sheet') {
+        stickerSheet = uploadedFile;
+      } else {
+        uploadedFiles.push(uploadedFile);
+      }
+    }
+
+    uploadedOutputs[output.id] = {
+      id: output.id,
+      title: output.title,
+      kind: output.kind,
+      status: 'ready',
+      provider: output.provider || result.mode || '',
+      prompt: output.prompt || '',
+      files: uploadedFiles,
+      updatedAt: now,
+    };
+  }
+
+  const source = await buildGeneratorSourceRecord({
+    imageId,
+    runId,
+    outputDir,
+  });
+  const cleanParams = sanitizeGeneratorParams(params);
+  const profileName = cleanParams.participantName || 'Gerador';
+  const payload = {
+    imageId,
+    runId,
+    eventId: getEventId(),
+    sourceType: 'generator',
+    status: 'completed',
+    accepted: true,
+    profileId: '',
+    profile: {
+      profileName,
+      phoneNumber: '',
+      whatsAppAddress: '',
+      waId: '',
+    },
+    params: cleanParams,
+    generatedPublicPath: `/generated/${runId}/`,
+    updatedAt: now,
+    latestGeneratedAt: now,
+    generation: {
+      active: false,
+      lastStatus: 'completed',
+      lastTrigger: 'generator',
+      lastRequestedBy: 'generator',
+      lastCompletedAt: now,
+    },
+    outputs: uploadedOutputs,
+  };
+
+  if (isNew) {
+    payload.createdAt = now;
+  }
+
+  if (durationMs !== null && Number.isFinite(Number(durationMs))) {
+    payload.generation.lastDurationMs = Math.max(0, Number(durationMs));
+  }
+
+  if (source) {
+    payload.source = source;
+  }
+
+  if (stickerSheet) {
+    payload.stickerSheet = stickerSheet;
+  }
+
+  await imageRef.set(payload, { merge: true });
+
+  if (isNew) {
+    await getEventRef().set({
+      updatedAt: now,
+      stats: {
+        photosGenerated: FieldValue.increment(1),
+      },
+    }, { merge: true });
+  }
+
+  return {
+    persisted: true,
+    imageId,
+    isNew,
+  };
+}
+
 async function saveSourceImagesIfNeeded({
   outputDir,
   sourceBuffer,
@@ -228,6 +379,99 @@ function withPublicFileUrls(output, runId) {
       url: `/generated/${runId}/${file.name}`,
     })),
   };
+}
+
+function normalizeResultOutputs(result = {}) {
+  if (Array.isArray(result.outputs)) {
+    return result.outputs;
+  }
+
+  if (result.output) {
+    return [result.output];
+  }
+
+  return [];
+}
+
+async function buildGeneratorSourceRecord({
+  imageId,
+  runId,
+  outputDir,
+}) {
+  const sourcePath = path.join(outputDir, 'source.png');
+  const optimizedPath = path.join(outputDir, OPTIMIZED_SOURCE_FILENAME);
+  const source = {};
+
+  try {
+    await fs.access(sourcePath);
+    const upload = await uploadFileToStorage({
+      localPath: sourcePath,
+      destination: `images/${imageId}/source/source.png`,
+      contentType: 'image/png',
+      metadata: {
+        imageId,
+        source: 'generator',
+      },
+    });
+
+    source.originalLocalPath = path.relative(PROJECT_ROOT, sourcePath);
+    source.originalUrl = `/generated/${runId}/source.png`;
+    source.originalStorage = upload;
+  } catch (error) {
+    // Source is optional for resumed generator runs created before persistence existed.
+  }
+
+  try {
+    await fs.access(optimizedPath);
+    const upload = await uploadFileToStorage({
+      localPath: optimizedPath,
+      destination: `images/${imageId}/source/${OPTIMIZED_SOURCE_FILENAME}`,
+      contentType: 'image/jpeg',
+      metadata: {
+        imageId,
+        source: 'generator',
+        optimizedFor: 'openai-images',
+      },
+    });
+
+    source.optimizedLocalPath = path.relative(PROJECT_ROOT, optimizedPath);
+    source.optimizedUrl = `/generated/${runId}/${OPTIMIZED_SOURCE_FILENAME}`;
+    source.optimizedStorage = upload;
+  } catch (error) {
+    // Optimized source is optional when only generated outputs are available.
+  }
+
+  return Object.keys(source).length ? source : null;
+}
+
+function sanitizeGeneratorParams(params = {}) {
+  const output = {};
+
+  for (const [key, value] of Object.entries(params || {})) {
+    if (value === undefined || value === null) {
+      continue;
+    }
+
+    const text = String(value).trim();
+
+    if (text) {
+      output[key] = text;
+    }
+  }
+
+  return output;
+}
+
+function contentTypeForGeneratedFile(file = {}) {
+  if (file.type === 'webp' || String(file.name || '').endsWith('.webp')) {
+    return 'image/webp';
+  }
+
+  if (String(file.name || '').endsWith('.jpg') || String(file.name || '').endsWith('.jpeg')) {
+    return 'image/jpeg';
+  }
+
+  return 'image/png';
 }
 
 async function generateAndSaveImage({
@@ -890,16 +1134,19 @@ async function generateWithOpenAI({
       prompt,
       'Output requirement: return a real PNG with a real transparent alpha channel.',
       'Identity preservation is the highest priority: preserve the source person face shape, apparent age, skin tone, nose, mouth, eyes, eyebrows, smile, hairline, hair, facial hair, and unique facial features. Do not beautify, reshape, slim, age, de-age, symmetrize, or turn the person into a different face.',
+      'For the main card image, the result must look like a real professional photograph, not CGI, not a 3D render, not an AI influencer portrait, not an illustration, and not airbrushed beauty retouching.',
+      'Preserve the exact original hair color, roots, length, volume, texture, curls/waves/straightness, parting, flyaway hairs, haircut, and hairline. Do not restyle, recolor, smooth, add volume, or simplify the hair.',
+      'Keep natural skin texture, subtle pores, expression lines, asymmetry, and real facial character. Avoid waxy or plastic skin, overly smooth faces, generic model faces, standardized smiles, and enlarged eyes.',
+      'For the main card image, do not force a smile or change the mouth to make the person look happier. Preserve the source expression, mouth shape, teeth, lips, cheeks, eyes, and facial proportions. If the source person is already smiling, keep that same recognizable smile; if not, use a natural confident expression without inventing a new smile.',
       'If the source image contains a clear foreground group, preserve the exact real people from the source with a maximum of three people. One source person means one output person; two source people means two output people; three source people means three output people. Never invent, duplicate, remove, merge, or add extra people.',
       'For every real person included, preserve each individual face separately. Avoid generic model faces, stock-photo faces, plastic skin, standardized smiles, enlarged eyes, or any face that would not be recognizable side by side with the original.',
       'Preserve all existing accessories exactly as they appear in the source image: same style, material, shape, size, color, and position. Do not restyle, recolor, simplify, remove, or replace real earrings, rings, bracelets, watches, necklaces, piercings, hats, or glasses.',
+      'For the main card image, if the source person wears real glasses, preserve the exact glasses as identity-critical: frame shape, lens proportions, bridge, temples, thickness, transparent lenses, position on the face, and the exact color map of each frame part. If the glasses are bicolor, split-color, asymmetric, or have different colors on upper/lower rims, left/right sides, bridge, or temples, keep each part in its original color. Never convert bicolor glasses into a single-color frame, never remove dark/black sections, and never replace them with generic sporty glasses.',
       'Do not draw, simulate, or include a checkerboard/checkered transparency preview pattern.',
       'Do not include any background, backdrop, card frame, border, logo, watermark, or extra text.',
-      'Do not include Nike, swoosh marks, check marks, manufacturer logos, team crests, sponsor logos, or any brand-like symbol on clothing.',
-      'The shirt must not contain any logo-like symbol. The only allowed graphic on the shirt is the exact jersey number when the prompt explicitly requests one.',
-      'If a jersey number is requested, show that number exactly once on the shirt; do not duplicate it on the shoulder, chest, sleeve, or any other area.',
-      'If the prompt does not explicitly request a jersey number, do not add any number, digits, letters, or text to the shirt.',
-      'For sticker variants, if the source shirt includes a jersey number, preserve that same number visibly on the shirt; do not remove, hide, change, relocate, or duplicate it.',
+      'Use the same shirt pattern for every generated image: a plain generic Brazil soccer shirt with a yellow body, green V-neck collar, and green sleeve cuffs. The collar must be visibly V-shaped, not round.',
+      'The shirt must be completely free of branding and numbers. Do not include Nike, swoosh marks, check marks, manufacturer logos, team crests, sponsor logos, CBF crests, stars, shields, letters, digits, jersey numbers, or any brand-like symbol on clothing.',
+      'Even if the source image or form parameters include a jersey number, remove it and render plain yellow fabric instead. Do not add any number, digits, letters, text, badge, emblem, patch, or decorative symbol to the shirt.',
       'Do not add wearable accessories such as glasses, sunglasses, hats, jewelry, watches, or bracelets unless they are clearly visible in the source image or explicitly required by the prompt.',
       'If glasses are not clearly visible on the source face, assume the person does not wear glasses; keep the face without glasses and do not add frames or lenses to any sticker except the specific sticker titled "O Hexa Vem".',
       'When the prompt requires visible text, render only the exact requested text. Do not add extra letters, numbers, punctuation, symbols, duplicated words, banners, or text-like decorative shapes.',
@@ -1000,7 +1247,7 @@ function createPlaceholderSvg({
   const isMain = spec.kind === 'main';
   const name = escapeXml(params.participantName || 'Participante');
   const subtitle = isMain
-    ? `${escapeXml(params.position || 'Craque')} #${escapeXml(params.jerseyNumber || '10')}`
+    ? escapeXml(params.position || 'Craque')
     : escapeXml(spec.title);
   const promptHint = escapeXml(prompt.slice(0, 82));
   const border = isMain ? 28 : 18;
@@ -1361,6 +1608,7 @@ module.exports = {
   STICKER_SHEET_FILENAME,
   generateWorldCupImages,
   generateWorldCupImage,
+  persistGeneratorImageResult,
   composeMainCardFromSubject,
   ensureStickerSheetForRun,
   clearGeneratedImages,
