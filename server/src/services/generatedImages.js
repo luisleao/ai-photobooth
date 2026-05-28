@@ -63,6 +63,7 @@ const OPENAI_IMAGE_SIZE_MAIN = process.env.OPENAI_IMAGE_SIZE_MAIN || '1024x1536'
 const OPENAI_IMAGE_SIZE_STICKER = process.env.OPENAI_IMAGE_SIZE_STICKER || '1024x1024';
 const OPENAI_SOURCE_IMAGE_MAX_SIZE = readIntegerEnv('OPENAI_SOURCE_IMAGE_MAX_SIZE', 1024, 320, 1600);
 const OPENAI_SOURCE_IMAGE_QUALITY = readIntegerEnv('OPENAI_SOURCE_IMAGE_QUALITY', 82, 60, 95);
+const DEFAULT_AUTO_PRINT_ON_GENERATION = readBooleanEnv('PHOTOBOOTH_AUTO_PRINT_ON_GENERATION', false);
 const OPTIMIZED_SOURCE_FILENAME = 'source-openai.jpg';
 const SECONDARY_SOURCE_FILENAME = 'source-secondary.png';
 const MAIN_SUBJECT_FILENAME = '01-figurinha-principal-subject.png';
@@ -343,11 +344,143 @@ async function persistGeneratorImageResult({
     }, { merge: true });
   }
 
+  await ensureGeneratorAutoPrintRequests({
+    imageRef,
+    imageId,
+    imageData: payload,
+    uploadedOutputs,
+    stickerSheet,
+    now,
+  });
+
   return {
     persisted: true,
     imageId,
     isNew,
   };
+}
+
+async function ensureGeneratorAutoPrintRequests({
+  imageRef,
+  imageId,
+  imageData,
+  uploadedOutputs,
+  stickerSheet,
+  now,
+}) {
+  const printAutomation = await ensureEventPrintAutomationConfig();
+  const tasks = [];
+
+  if (printAutomation.autoPrintMainOnReady) {
+    const mainOutput = uploadedOutputs[MAIN_IMAGE_ID]
+      || Object.values(uploadedOutputs).find((output) => output && output.kind === 'main')
+      || null;
+    const mainFile = mainOutput && Array.isArray(mainOutput.files)
+      ? mainOutput.files.find((file) => file && file.type === 'print-png')
+      : null;
+
+    if (mainFile) {
+      tasks.push(createGeneratorPrintRequest({
+        imageRef,
+        imageId,
+        imageData,
+        type: 'main',
+        source: 'generator-automatic-main',
+        file: mainFile,
+        now,
+      }));
+    }
+  }
+
+  if (printAutomation.autoPrintStickerSheetOnReady && stickerSheet) {
+    tasks.push(createGeneratorPrintRequest({
+      imageRef,
+      imageId,
+      imageData,
+      type: 'stickers',
+      source: 'generator-automatic-stickers',
+      file: stickerSheet,
+      now,
+    }));
+  }
+
+  await Promise.all(tasks);
+}
+
+async function createGeneratorPrintRequest({
+  imageRef,
+  imageId,
+  imageData,
+  type,
+  source,
+  file,
+  now,
+}) {
+  const cleanType = type === 'main' ? 'main' : 'stickers';
+  const printId = `${imageId}_${cleanType}`;
+  const printRef = getEventRef().collection('prints').doc(printId);
+  const printSnap = await printRef.get();
+  const isNew = !printSnap.exists;
+  const pendingFilename = cleanType === 'stickers' && file && file.storagePath
+    ? buildPrintPendingFilename(printId, file.storagePath, now)
+    : null;
+  const profile = imageData.profile || {};
+
+  await printRef.set({
+    printId,
+    imageId,
+    profileId: '',
+    type: cleanType,
+    mode: cleanType === 'main' ? 'automatic' : 'manual-folder',
+    profile: {
+      phoneNumber: '',
+      whatsAppAddress: '',
+      profileName: profile.profileName || 'Gerador',
+      waId: '',
+    },
+    file,
+    status: file && file.storagePath ? 'pending' : 'waiting-file',
+    pendingFilename,
+    localPendingPath: null,
+    queuedAt: null,
+    source,
+    requestedBy: 'generator',
+    requestedAt: now,
+    requestCount: FieldValue.increment(1),
+    printedAt: null,
+    notifiedAt: null,
+    notificationError: null,
+    printedFilename: null,
+    printCountedAt: null,
+    updatedAt: now,
+  }, { merge: true });
+
+  await imageRef.set({
+    updatedAt: now,
+    prints: {
+      [cleanType]: {
+        printId,
+        status: file && file.storagePath ? 'pending' : 'waiting-file',
+        requestedAt: now,
+        requestCount: FieldValue.increment(1),
+      },
+    },
+  }, { merge: true });
+
+  if (isNew) {
+    const printStats = {
+      totalRequested: FieldValue.increment(1),
+    };
+    printStats[cleanType === 'main' ? 'mainRequested' : 'stickersRequested'] = FieldValue.increment(1);
+
+    await getEventRef().set({
+      updatedAt: now,
+      stats: {
+        printRequested: FieldValue.increment(1),
+        prints: printStats,
+      },
+    }, { merge: true });
+  }
 }
 
 async function saveSourceImagesIfNeeded({
@@ -1379,6 +1512,62 @@ function readIntegerEnv(name, fallback, min, max) {
   }
 
   return Math.min(max, Math.max(min, parsed));
+}
+
+function readBooleanEnv(name, fallback = false) {
+  const value = String(process.env[name] || '').trim().toLowerCase();
+
+  if (!value) {
+    return fallback;
+  }
+
+  return ['1', 'true', 'yes', 'sim', 'on'].includes(value);
+}
+
+async function ensureEventPrintAutomationConfig() {
+  const eventRef = getEventRef();
+  const snap = await eventRef.get();
+  const data = snap.exists ? snap.data() || {} : {};
+  const hasMainConfig = typeof data.autoPrintMainOnReady === 'boolean';
+  const hasStickerSheetConfig = typeof data.autoPrintStickerSheetOnReady === 'boolean';
+  const autoPrintMainOnReady = hasMainConfig
+    ? data.autoPrintMainOnReady
+    : DEFAULT_AUTO_PRINT_ON_GENERATION;
+  const autoPrintStickerSheetOnReady = hasStickerSheetConfig
+    ? data.autoPrintStickerSheetOnReady
+    : DEFAULT_AUTO_PRINT_ON_GENERATION;
+
+  if (!hasMainConfig || !hasStickerSheetConfig || data.eventId !== getEventId()) {
+    const payload = {
+      eventId: getEventId(),
+      updatedAt: Timestamp.now(),
+    };
+
+    if (!hasMainConfig) {
+      payload.autoPrintMainOnReady = autoPrintMainOnReady;
+    }
+
+    if (!hasStickerSheetConfig) {
+      payload.autoPrintStickerSheetOnReady = autoPrintStickerSheetOnReady;
+    }
+
+    await eventRef.set(payload, { merge: true });
+  }
+
+  return {
+    autoPrintMainOnReady,
+    autoPrintStickerSheetOnReady,
+  };
+}
+
+function buildPrintPendingFilename(printId, storagePath, timestamp) {
+  const millis = timestamp && typeof timestamp.toMillis === 'function'
+    ? timestamp.toMillis()
+    : Date.now();
+  return `${printId}-${millis}-${path.basename(storagePath)}`
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 180);
 }
 
 function readIntegerValue(value, fallback, min, max) {
