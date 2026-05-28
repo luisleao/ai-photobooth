@@ -39,6 +39,7 @@ const {
 } = require('./services/firebaseAdmin');
 const {
   createPrintRequest,
+  ensureEventPrintAutomationConfig,
   ensureEventPrintLimit,
   handleWhatsAppWebhook,
   recomposeMainImage,
@@ -138,14 +139,16 @@ app.get('/search/:phone', (req, res) => {
 
 app.get('/api/photobooth/manager/config', async (req, res) => {
   let printLimitPerProfile = null;
+  let printAutomation = null;
   let mainComposition = null;
 
   if (isFirebaseConfigured()) {
     try {
       printLimitPerProfile = await ensureEventPrintLimit();
+      printAutomation = await ensureEventPrintAutomationConfig();
       mainComposition = await getMainCompositionConfig();
     } catch (error) {
-      console.error('[manager] failed to ensure event print limit', error);
+      console.error('[manager] failed to ensure event config', error);
     }
   }
 
@@ -154,6 +157,7 @@ app.get('/api/photobooth/manager/config', async (req, res) => {
     firestoreRoot: `/events/${getEventId()}`,
     storageRoot: getStorageRoot(),
     printLimitPerProfile,
+    printAutomation,
     mainComposition,
     firebaseConfig: getFirebasePublicConfig(),
   });

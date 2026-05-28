@@ -40,7 +40,7 @@ const SOURCE_IMAGE_MAX_SIZE = readIntegerEnv('WHATSAPP_SOURCE_IMAGE_MAX_SIZE', 1
 const SOURCE_IMAGE_QUALITY = readIntegerEnv('WHATSAPP_SOURCE_IMAGE_QUALITY', 82, 60, 95);
 const DEFAULT_PRINT_LIMIT_PER_PROFILE = readIntegerEnv('PHOTOBOOTH_PRINT_LIMIT_PER_PROFILE', 1, 0, 1000);
 const MAIN_WHATSAPP_MAX_SIZE = readIntegerEnv('WHATSAPP_MAIN_IMAGE_MAX_SIZE', 1400, 640, 1800);
-const AUTO_PRINT_ON_GENERATION = readBooleanEnv('PHOTOBOOTH_AUTO_PRINT_ON_GENERATION', false);
+const DEFAULT_AUTO_PRINT_ON_GENERATION = readBooleanEnv('PHOTOBOOTH_AUTO_PRINT_ON_GENERATION', false);
 
 async function handleWhatsAppWebhook(req, res) {
   const twiml = createMessagingResponse();
@@ -525,6 +525,7 @@ async function generatePackageFromSource({
     personality: 'confiante, alegre e carismatico',
   };
   const mainSpec = getImageSpecSummaries().find((spec) => spec.kind === 'main');
+  const printAutomation = await ensureEventPrintAutomationConfig();
 
   await imageRef.set({
     status: 'generating-main',
@@ -558,7 +559,7 @@ async function generatePackageFromSource({
     updatedAt: Timestamp.now(),
   }, { merge: true });
 
-  if (AUTO_PRINT_ON_GENERATION) {
+  if (printAutomation.autoPrintMainOnReady) {
     await createPrintRequest({
       imageId,
       type: 'main',
@@ -652,7 +653,7 @@ async function generatePackageFromSource({
     trigger,
   });
 
-  if (AUTO_PRINT_ON_GENERATION) {
+  if (printAutomation.autoPrintStickerSheetOnReady) {
     await createPrintRequest({
       imageId,
       type: 'stickers',
@@ -1119,6 +1120,42 @@ async function ensureEventPrintLimit() {
   }
 
   return limit;
+}
+
+async function ensureEventPrintAutomationConfig() {
+  const eventRef = getEventRef();
+  const snap = await eventRef.get();
+  const data = snap.exists ? snap.data() || {} : {};
+  const hasMainConfig = typeof data.autoPrintMainOnReady === 'boolean';
+  const hasStickerSheetConfig = typeof data.autoPrintStickerSheetOnReady === 'boolean';
+  const autoPrintMainOnReady = hasMainConfig
+    ? data.autoPrintMainOnReady
+    : DEFAULT_AUTO_PRINT_ON_GENERATION;
+  const autoPrintStickerSheetOnReady = hasStickerSheetConfig
+    ? data.autoPrintStickerSheetOnReady
+    : DEFAULT_AUTO_PRINT_ON_GENERATION;
+
+  if (!hasMainConfig || !hasStickerSheetConfig || data.eventId !== getEventId()) {
+    const payload = {
+      eventId: getEventId(),
+      updatedAt: Timestamp.now(),
+    };
+
+    if (!hasMainConfig) {
+      payload.autoPrintMainOnReady = autoPrintMainOnReady;
+    }
+
+    if (!hasStickerSheetConfig) {
+      payload.autoPrintStickerSheetOnReady = autoPrintStickerSheetOnReady;
+    }
+
+    await eventRef.set(payload, { merge: true });
+  }
+
+  return {
+    autoPrintMainOnReady,
+    autoPrintStickerSheetOnReady,
+  };
 }
 
 async function checkProfileImageLimit(profileId) {
@@ -1631,6 +1668,7 @@ function readBooleanEnv(name, fallback = false) {
 
 module.exports = {
   createPrintRequest,
+  ensureEventPrintAutomationConfig,
   ensureEventPrintLimit,
   handleWhatsAppWebhook,
   recomposeMainImage,
