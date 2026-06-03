@@ -20,6 +20,9 @@ const {
   getImageSpecSummaries,
 } = require('./generatedImages');
 const {
+  getCurrentEventTranslator,
+} = require('./eventMessages');
+const {
   createPhoneProfileId,
   limpaNumero,
 } = require('./phone');
@@ -45,23 +48,24 @@ const DEFAULT_AUTO_PRINT_ON_GENERATION = readBooleanEnv('PHOTOBOOTH_AUTO_PRINT_O
 async function handleWhatsAppWebhook(req, res) {
   const twiml = createMessagingResponse();
   const messageData = req.body || {};
+  const t = await getCurrentEventTranslator();
 
   try {
     if (!messageData.From) {
       res.status(400);
-      twiml.message('Webhook invalido: remetente ausente.');
+      twiml.message(t('webhookMissingSender'));
       return sendTwiml(res, twiml);
     }
 
     if (!isFirebaseConfigured()) {
-      twiml.message('Photobooth ainda nao esta configurado para salvar os pedidos. Avise a equipe do evento.');
+      twiml.message(t('firebaseNotConfigured'));
       return sendTwiml(res, twiml);
     }
 
     const profile = await upsertProfile(messageData);
 
     if (!hasImageMedia(messageData) && isStickerResendKeyword(messageData)) {
-      twiml.message('Vou reenviar os stickers que encontrei para este número.');
+      twiml.message(t('stickerResendAck'));
       sendTwiml(res, twiml);
 
       runInBackground(() => resendGeneratedStickersForProfile({
@@ -76,7 +80,7 @@ async function handleWhatsAppWebhook(req, res) {
 
       if (!imageId) {
         res.status(400);
-        twiml.message('Webhook invalido: SID da mensagem ausente.');
+        twiml.message(t('webhookMissingSid'));
         return sendTwiml(res, twiml);
       }
 
@@ -90,7 +94,7 @@ async function handleWhatsAppWebhook(req, res) {
           accepted: false,
         });
 
-        twiml.message('Essa foto ja esta registrada no processo. Se precisar de uma nova geracao, envie outra imagem.');
+        twiml.message(t('duplicateImage'));
         return sendTwiml(res, twiml);
       }
 
@@ -110,7 +114,7 @@ async function handleWhatsAppWebhook(req, res) {
           },
         });
 
-        twiml.message(`Seu limite de ${limit.limit} pacote(s) de impressao para este evento ja foi atingido. Procure a equipe se precisar liberar mais uma geracao.`);
+        twiml.message(t('limitReached', { limit: limit.limit }));
         return sendTwiml(res, twiml);
       }
 
@@ -121,7 +125,7 @@ async function handleWhatsAppWebhook(req, res) {
         accepted: true,
       });
 
-      twiml.message('Aguarde uns minutos, daqui a pouco te responderemos por aqui com a sua foto e seus stickers.');
+      twiml.message(t('generationAccepted'));
       sendTwiml(res, twiml);
 
       runInBackground(() => downloadStoreAndGenerate({
@@ -132,13 +136,13 @@ async function handleWhatsAppWebhook(req, res) {
       return undefined;
     }
 
-    twiml.message('Envie uma foto por aqui para gerar seu cartão e o pacote de stickers temáticos.');
+    twiml.message(t('sendPhotoInstructions'));
     return sendTwiml(res, twiml);
   } catch (error) {
     console.error('[whatsapp] webhook failed', error);
 
     if (!res.headersSent) {
-      twiml.message('Nao consegui processar sua mensagem agora. A equipe foi avisada para verificar.');
+      twiml.message(t('genericFailure'));
       return sendTwiml(res, twiml);
     }
 
@@ -155,6 +159,8 @@ async function downloadStoreAndGenerate({
   const startedMs = Date.now();
 
   try {
+    const t = await getCurrentEventTranslator();
+
     await startGenerationAttempt({
       imageRef,
       status: 'downloading-source',
@@ -166,7 +172,7 @@ async function downloadStoreAndGenerate({
     const media = await downloadTwilioMedia(messageData.MediaUrl0);
 
     if (!String(media.contentType).startsWith('image/')) {
-      throw clientError('unsupported_media', 'A midia recebida nao e uma imagem.');
+      throw clientError('unsupported_media', t('unsupportedMedia'));
     }
 
     const localDir = path.join(WHATSAPP_LOCAL_ROOT, imageId);
@@ -519,6 +525,7 @@ async function resendGeneratedStickersForProfile({
   profile,
   requestedBy,
 }) {
+  const t = await getCurrentEventTranslator();
   const destination = profile && profile.whatsAppAddress
     ? toWhatsAppAddress(profile.whatsAppAddress)
     : '';
@@ -583,7 +590,7 @@ async function resendGeneratedStickersForProfile({
   if (!stickers.length) {
     await sendWhatsAppText(
       destination,
-      'Ainda nao encontrei stickers prontos para este numero. Envie uma foto primeiro ou aguarde a geracao terminar.',
+      t('stickerResendEmpty'),
     );
 
     return {
@@ -639,8 +646,8 @@ async function resendGeneratedStickersForProfile({
   }
 
   const summary = failed > 0
-    ? `Reenviei ${sent} sticker(s), mas ${failed} nao puderam ser enviados agora.`
-    : `Reenviei ${sent} sticker(s) gerado(s) para este numero.`;
+    ? t('stickerResendPartial', { sent, failed })
+    : t('stickerResendSuccess', { sent });
 
   await sendWhatsAppText(destination, summary);
 
@@ -990,6 +997,7 @@ async function createPrintRequest({
   declined = false,
   file,
 }) {
+  const t = await getCurrentEventTranslator();
   const cleanType = type === 'main' ? 'main' : 'stickers';
   const imageRef = getImageRef(imageId);
   const imageSnap = await imageRef.get();
@@ -1078,8 +1086,8 @@ async function createPrintRequest({
     ok: true,
     printId,
     message: cleanType === 'main'
-      ? 'Cartao enviado para impressao automatica.'
-      : 'Combinado. Seus stickers entraram na fila de impressao.',
+      ? t('printRequestMain')
+      : t('printRequestStickers'),
   };
 }
 
@@ -1481,9 +1489,10 @@ async function notifyGenerationFailure({
   }
 
   try {
+    const t = await getCurrentEventTranslator();
     const message = await sendWhatsAppText(
       profile.whatsAppAddress,
-      'Ocorreu um erro ao processar sua foto. Por favor, tente novamente mais tarde.',
+      t('generationFailure'),
     );
 
     await imageRef.set({

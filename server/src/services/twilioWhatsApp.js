@@ -1,40 +1,43 @@
+const { AsyncLocalStorage } = require('node:async_hooks');
 const twilio = require('twilio');
 const { loadEnv } = require('./env');
 const { limpaNumero } = require('./phone');
 
 loadEnv();
 
-let client;
+const twilioContext = new AsyncLocalStorage();
+const clients = new Map();
 
 function createMessagingResponse() {
   return new twilio.twiml.MessagingResponse();
 }
 
 function getTwilioClient() {
-  if (client) {
-    return client;
-  }
-
-  const missing = ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'].filter((key) => !process.env[key]);
+  const config = getResolvedTwilioConfig();
+  const missing = ['accountSid', 'authToken'].filter((key) => !config[key]);
 
   if (missing.length) {
     throw configurationError('twilio_not_configured', `Twilio nao configurada: ${missing.join(', ')}.`);
   }
 
-  client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-  return client;
+  const cacheKey = `${config.accountSid}:${config.authToken}`;
+
+  if (!clients.has(cacheKey)) {
+    clients.set(cacheKey, twilio(config.accountSid, config.authToken));
+  }
+
+  return clients.get(cacheKey);
 }
 
 function getSenderFields() {
-  const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
-    || process.env.CUSTOMIZE_MESSAGESERVICE_SID
-    || '';
+  const config = getResolvedTwilioConfig();
+  const messagingServiceSid = config.messagingServiceSid || '';
 
   if (messagingServiceSid.startsWith('MG')) {
     return { messagingServiceSid };
   }
 
-  const from = process.env.TWILIO_WHATSAPP_FROM || messagingServiceSid;
+  const from = config.whatsAppFrom || messagingServiceSid;
 
   if (!from) {
     throw configurationError('twilio_sender_not_configured', 'Configure TWILIO_WHATSAPP_FROM ou TWILIO_MESSAGING_SERVICE_SID.');
@@ -85,14 +88,15 @@ async function sendWhatsAppContent(to, {
 }
 
 async function downloadTwilioMedia(mediaUrl) {
-  const missing = ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'].filter((key) => !process.env[key]);
+  const config = getResolvedTwilioConfig();
+  const missing = ['accountSid', 'authToken'].filter((key) => !config[key]);
 
   if (missing.length) {
     throw configurationError('twilio_not_configured', `Twilio nao configurada: ${missing.join(', ')}.`);
   }
 
   const auth = Buffer
-    .from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`)
+    .from(`${config.accountSid}:${config.authToken}`)
     .toString('base64');
   const response = await fetch(mediaUrl, {
     headers: {
@@ -108,6 +112,92 @@ async function downloadTwilioMedia(mediaUrl) {
     buffer: Buffer.from(await response.arrayBuffer()),
     contentType: response.headers.get('content-type') || 'application/octet-stream',
   };
+}
+
+function runWithTwilioConfig(config, task) {
+  return twilioContext.run({
+    config: normalizeTwilioEventConfig(config),
+  }, task);
+}
+
+function getResolvedTwilioConfig() {
+  const env = getEnvTwilioConfig();
+  const scoped = twilioContext.getStore();
+  const event = normalizeTwilioEventConfig(scoped && scoped.config ? scoped.config : {});
+
+  if (event.mode !== 'custom') {
+    return {
+      ...env,
+      mode: 'default',
+      source: 'env',
+    };
+  }
+
+  return {
+    mode: 'custom',
+    source: 'event',
+    accountSid: event.accountSid || env.accountSid,
+    authToken: event.authToken || env.authToken,
+    messagingServiceSid: event.messagingServiceSid || env.messagingServiceSid,
+    whatsAppFrom: event.whatsAppFrom || env.whatsAppFrom,
+  };
+}
+
+function getEnvTwilioConfig() {
+  return {
+    accountSid: String(process.env.TWILIO_ACCOUNT_SID || '').trim(),
+    authToken: String(process.env.TWILIO_AUTH_TOKEN || '').trim(),
+    messagingServiceSid: String(process.env.TWILIO_MESSAGING_SERVICE_SID
+      || process.env.CUSTOMIZE_MESSAGESERVICE_SID
+      || '').trim(),
+    whatsAppFrom: String(process.env.TWILIO_WHATSAPP_FROM || '').trim(),
+  };
+}
+
+function normalizeTwilioEventConfig(config = {}) {
+  const mode = config.mode === 'custom' ? 'custom' : 'default';
+
+  return {
+    mode,
+    accountSid: String(config.accountSid || '').trim(),
+    authToken: String(config.authToken || '').trim(),
+    messagingServiceSid: String(config.messagingServiceSid || '').trim(),
+    whatsAppFrom: String(config.whatsAppFrom || config.from || '').trim(),
+  };
+}
+
+function getTwilioDefaultConfigPublic() {
+  const config = getEnvTwilioConfig();
+
+  return {
+    configured: Boolean(config.accountSid && config.authToken && (config.messagingServiceSid || config.whatsAppFrom)),
+    accountSid: maskSecret(config.accountSid),
+    hasAuthToken: Boolean(config.authToken),
+    messagingServiceSid: config.messagingServiceSid,
+    whatsAppFrom: config.whatsAppFrom,
+  };
+}
+
+function getTwilioEventConfigPublic(config = {}) {
+  const normalized = normalizeTwilioEventConfig(config);
+
+  return {
+    mode: normalized.mode,
+    accountSid: normalized.accountSid,
+    hasAuthToken: Boolean(normalized.authToken),
+    messagingServiceSid: normalized.messagingServiceSid,
+    whatsAppFrom: normalized.whatsAppFrom,
+  };
+}
+
+function maskSecret(value) {
+  const text = String(value || '').trim();
+
+  if (text.length <= 8) {
+    return text ? '****' : '';
+  }
+
+  return `${text.slice(0, 4)}****${text.slice(-4)}`;
 }
 
 function toWhatsAppAddress(value) {
@@ -172,6 +262,10 @@ module.exports = {
   getSenderFields,
   getTwilioClient,
   parsePrintPayload,
+  getTwilioDefaultConfigPublic,
+  getTwilioEventConfigPublic,
+  normalizeTwilioEventConfig,
+  runWithTwilioConfig,
   sendWhatsAppContent,
   sendWhatsAppMedia,
   sendWhatsAppText,

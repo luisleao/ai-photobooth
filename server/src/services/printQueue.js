@@ -11,7 +11,8 @@ const {
   isFirebaseConfigured,
 } = require('./firebaseAdmin');
 const { STICKER_SHEET_FILENAME } = require('./generatedImages');
-const { sendWhatsAppText, toWhatsAppAddress } = require('./twilioWhatsApp');
+const { getCurrentEventTranslator } = require('./eventMessages');
+const { runWithTwilioConfig, sendWhatsAppText, toWhatsAppAddress } = require('./twilioWhatsApp');
 
 const SERVER_ROOT = path.resolve(__dirname, '..', '..');
 const PROJECT_ROOT = path.resolve(SERVER_ROOT, '..');
@@ -237,6 +238,42 @@ async function markPrintDocumentStatus(printId, status, updatedBy) {
   };
 }
 
+async function clearPrintQueue(type, updatedBy) {
+  const normalizedType = type === 'main' ? 'main' : 'stickers';
+  const openStatuses = ['pending', 'waiting-file', 'queued'];
+  const now = Timestamp.now();
+  const snap = await getEventRef()
+    .collection('prints')
+    .where('type', '==', normalizedType)
+    .get();
+  const docs = snap.docs.filter((doc) => openStatuses.includes((doc.data() || {}).status || 'pending'));
+
+  for (let index = 0; index < docs.length; index += 450) {
+    const batch = getEventRef().firestore.batch();
+    docs.slice(index, index + 450).forEach((doc) => {
+      batch.set(doc.ref, {
+        status: 'cancelled',
+        cancelledAt: now,
+        clearedAt: now,
+        clearedBy: updatedBy || 'manager',
+        updatedAt: now,
+        updatedBy: updatedBy || 'manager',
+        manualStatusChange: true,
+        notificationSkipped: true,
+        notificationSkippedReason: 'queue-cleared',
+      }, { merge: true });
+    });
+    await batch.commit();
+  }
+
+  return {
+    ok: true,
+    type: normalizedType,
+    status: 'cancelled',
+    cleared: docs.length,
+  };
+}
+
 async function printMainImage({
   printId,
   data,
@@ -326,12 +363,15 @@ async function markPrintDone(printRef, printId, data, status, printedFilename) {
 
   if (to) {
     try {
-      await sendWhatsAppText(
+      const twilioConfig = await loadCurrentEventTwilioConfig();
+      const t = await getCurrentEventTranslator();
+
+      await runWithTwilioConfig(twilioConfig, () => sendWhatsAppText(
         toWhatsAppAddress(to),
         data.type === 'main'
-          ? 'Seu cartao foi impresso e ja pode ser retirado na estacao do photobooth.'
-          : 'Seus stickers estao impressos e ja podem ser retirados na estacao do photobooth.',
-      );
+          ? t('printMainReady')
+          : t('printStickersReady'),
+      ));
       notifiedAt = now;
     } catch (error) {
       notificationError = error.message || 'Falha ao enviar notificacao WhatsApp.';
@@ -352,6 +392,17 @@ async function markPrintDone(printRef, printId, data, status, printedFilename) {
   if (!data.printCountedAt) {
     await incrementPrintedCounters(data, now);
   }
+}
+
+async function loadCurrentEventTwilioConfig() {
+  if (!isFirebaseConfigured()) {
+    return {};
+  }
+
+  const snap = await getEventRef().get();
+  const data = snap.exists ? snap.data() || {} : {};
+
+  return data.twilio || {};
 }
 
 async function resolvePrintFile(printDoc) {
@@ -492,6 +543,7 @@ function publicError(error) {
 module.exports = {
   PENDING_DIR,
   PRINTED_DIR,
+  clearPrintQueue,
   ensurePrintDirectories,
   markPrintDocumentStatus,
   notifyPrintedFile,

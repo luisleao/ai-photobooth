@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -143,6 +143,12 @@
         backdrop-filter: blur(10px);
       }
 
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
       h1,
       h2,
       h3,
@@ -157,7 +163,7 @@
 
       main {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 360px;
+        grid-template-columns: minmax(0, 1fr);
         gap: 20px;
         padding: 20px 24px 32px;
       }
@@ -206,7 +212,6 @@
         grid-template-columns: minmax(0, 1fr) minmax(260px, 0.5fr) minmax(280px, 0.65fr);
         gap: 12px;
         align-items: end;
-        margin-bottom: 18px;
         border: 1px solid var(--line);
         border-radius: 8px;
         padding: 14px;
@@ -242,6 +247,81 @@
         font-size: 13px;
       }
 
+      .settings-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 58;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: rgba(6, 16, 30, 0.76);
+      }
+
+      .settings-panel {
+        display: grid;
+        gap: 16px;
+        width: min(96vw, 920px);
+        max-height: 92vh;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+        background: var(--panel);
+        box-shadow: 0 24px 60px rgb(6 16 30 / 28%);
+      }
+
+      .settings-panel-header,
+      .settings-actions {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .settings-section {
+        display: grid;
+        gap: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        background: #f8fafc;
+      }
+
+      .settings-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .settings-field {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .settings-toggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 44px;
+        color: var(--ink);
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .settings-toggle input {
+        width: auto;
+        flex: 0 0 auto;
+      }
+
+      .webhook-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+      }
+
       .status-filter {
         display: grid;
         gap: 6px;
@@ -249,6 +329,22 @@
         color: var(--muted);
         font-size: 13px;
         font-weight: 700;
+      }
+
+      .print-queue-columns {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+        align-items: start;
+      }
+
+      .print-queue-column {
+        display: grid;
+        gap: 10px;
+      }
+
+      .print-queue-column .toolbar {
+        margin-bottom: 0;
       }
 
       .metrics {
@@ -1060,6 +1156,10 @@
           grid-template-columns: 1fr;
         }
 
+        .settings-grid {
+          grid-template-columns: 1fr;
+        }
+
         .participant-stat {
           text-align: left;
         }
@@ -1069,6 +1169,10 @@
         }
 
         .print-preview {
+          grid-template-columns: 1fr;
+        }
+
+        .print-queue-columns {
           grid-template-columns: 1fr;
         }
 
@@ -1090,86 +1194,65 @@
         <h1>AI Photobooth Manager</h1>
         <p class="muted" id="event-label"></p>
       </div>
-      <button class="secondary hidden" id="logout-button" type="button">Sair</button>
+      <div class="header-actions">
+        <button class="secondary icon-button hidden" id="settings-button" type="button" aria-label="Settings" title="Settings">
+          <i data-lucide="settings"></i>
+        </button>
+        <button class="secondary hidden" id="logout-button" type="button">Sign Out</button>
+      </div>
     </header>
 
     <section class="auth" id="auth-panel">
-      <h2>Entrar</h2>
+      <h2>Sign In</h2>
       <label>
         Email
         <input id="email" type="email" autocomplete="email" />
       </label>
       <label>
-        Senha
+        Password
         <input id="password" type="password" autocomplete="current-password" />
       </label>
-      <button id="login-button" type="button">Entrar</button>
+      <button id="login-button" type="button">Sign In</button>
       <p class="muted" id="auth-message"></p>
     </section>
 
     <main class="hidden" id="manager-panel">
       <section>
-        <div class="event-switcher">
-          <div class="event-summary">
-            <span class="muted">Evento Firestore</span>
-            <strong id="event-current">-</strong>
-            <small class="muted" id="event-current-root">/events/-</small>
-          </div>
-          <div class="event-controls">
-            <label for="event-select">Selecionar evento</label>
-            <div class="event-select-row">
-              <select id="event-select"></select>
-              <button class="secondary icon-button" id="event-refresh" type="button" aria-label="Atualizar eventos" title="Atualizar eventos">
-                <i data-lucide="refresh-cw"></i>
-              </button>
-            </div>
-          </div>
-          <form class="event-create" id="event-create-form">
-            <label for="event-create-id">Criar ou abrir evento</label>
-            <div class="event-create-row">
-              <input id="event-create-id" type="text" placeholder="evento-2026" autocomplete="off" />
-              <button class="success icon-button" id="event-create-button" type="submit" aria-label="Criar evento" title="Criar evento">
-                <i data-lucide="plus"></i>
-              </button>
-            </div>
-          </form>
-          <p class="event-message" id="event-message"></p>
-        </div>
-
         <div class="metrics">
           <div class="metric">
-            <span class="muted">Fotos geradas</span>
+            <span class="muted">Photos Generated</span>
             <strong id="metric-photos-generated">0</strong>
           </div>
           <div class="metric">
-            <span class="muted">Cartões impressos</span>
+            <span class="muted">Cards Printed</span>
             <strong id="metric-main-printed">0</strong>
           </div>
           <div class="metric">
-            <span class="muted">Stickers impressos</span>
+            <span class="muted">Stickers Printed</span>
             <strong id="metric-stickers-printed">0</strong>
           </div>
           <div class="metric">
-            <span class="muted">Limite por participante</span>
+            <span class="muted">Participant Limit</span>
             <strong id="metric-print-limit">0</strong>
           </div>
           <div class="metric">
-            <span class="muted">Tempo médio</span>
+            <span class="muted">Average Time</span>
             <strong id="metric-generation-average">0s</strong>
           </div>
         </div>
 
-        <div class="tabs" role="tablist" aria-label="Dados do manager">
-          <button class="tab-button active" id="images-tab-button" type="button" data-tab="images">Imagens</button>
-          <button class="tab-button" id="profiles-tab-button" type="button" data-tab="profiles">Participantes</button>
+        <div class="tabs" role="tablist" aria-label="Manager data">
+          <button class="tab-button active" id="images-tab-button" type="button" data-tab="images">Images</button>
+          <button class="tab-button" id="profiles-tab-button" type="button" data-tab="profiles">Participants</button>
+          <button class="tab-button" id="prints-tab-button" type="button" data-tab="prints">Print Queue</button>
         </div>
 
         <div class="tab-panel" id="images-tab">
           <div class="toolbar">
-            <h2>Imagens</h2>
+            <h2>Images</h2>
             <div class="scope-toolbar">
-              <small id="images-count">0 imagem(ns)</small>
-              <button class="secondary hidden" id="clear-profile-filter" type="button">Ver todas</button>
+              <small id="images-count">0 image(s)</small>
+              <button class="secondary hidden" id="clear-profile-filter" type="button">View All</button>
             </div>
           </div>
           <div class="grid" id="images"></div>
@@ -1177,61 +1260,206 @@
 
         <div class="tab-panel hidden" id="profiles-tab">
           <div class="toolbar">
-            <h2>Participantes</h2>
-            <small id="profiles-count">0 participante(s)</small>
+            <h2>Participants</h2>
+            <small id="profiles-count">0 participant(s)</small>
           </div>
           <div class="participants" id="profiles"></div>
         </div>
+
+        <div class="tab-panel hidden" id="prints-tab">
+          <label class="status-filter">
+            Queue Status
+            <select id="print-status-filter">
+              <option value="open">Open</option>
+              <option value="pending">Pending</option>
+              <option value="waiting-file">Waiting for file</option>
+              <option value="queued">In pending folder</option>
+              <option value="print-error">Card error</option>
+              <option value="queue-error">Sticker error</option>
+              <option value="printed">Printed</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="all">All</option>
+            </select>
+          </label>
+
+          <div class="print-queue-columns">
+            <section class="print-queue-column">
+              <div class="toolbar">
+                <div>
+                  <h2>Cards</h2>
+                  <small id="main-print-count">0 item(s)</small>
+                </div>
+                <button class="warning icon-button" id="clear-main-prints" type="button" aria-label="Clear card queue" title="Clear card queue">
+                  <i data-lucide="trash-2"></i>
+                </button>
+              </div>
+              <div class="queue-list" id="main-prints"></div>
+            </section>
+
+            <section class="print-queue-column">
+              <div class="toolbar">
+                <div>
+                  <h2>Stickers</h2>
+                  <small id="sticker-print-count">0 item(s)</small>
+                </div>
+                <button class="warning icon-button" id="clear-sticker-prints" type="button" aria-label="Clear sticker queue" title="Clear sticker queue">
+                  <i data-lucide="trash-2"></i>
+                </button>
+              </div>
+              <div class="queue-list" id="sticker-prints"></div>
+            </section>
+          </div>
+        </div>
       </section>
-
-      <aside>
-        <label class="status-filter">
-          Status da fila
-          <select id="print-status-filter">
-            <option value="open">Em aberto</option>
-            <option value="pending">Pendente</option>
-            <option value="waiting-file">Aguardando arquivo</option>
-            <option value="queued">Na pasta pending</option>
-            <option value="print-error">Erro no cartão</option>
-            <option value="queue-error">Erro no sticker</option>
-            <option value="printed">Impresso</option>
-            <option value="cancelled">Cancelado</option>
-            <option value="all">Todos</option>
-          </select>
-        </label>
-
-        <div class="toolbar">
-          <h2>Cartão</h2>
-          <small id="main-print-count">0 item(ns)</small>
-        </div>
-        <div class="queue-list" id="main-prints"></div>
-
-        <div class="toolbar" style="margin-top: 20px;">
-          <h2>Stickers</h2>
-          <small id="sticker-print-count">0 item(ns)</small>
-        </div>
-        <div class="queue-list" id="sticker-prints"></div>
-      </aside>
     </main>
 
-    <div class="zoom-modal hidden" id="zoom-modal" role="dialog" aria-modal="true" aria-label="Sticker ampliado">
+    <div class="settings-modal hidden" id="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <section class="settings-panel">
+        <div class="settings-panel-header">
+          <div>
+            <h2 id="settings-title">Settings</h2>
+            <p class="muted" id="settings-subtitle">Event and WhatsApp integration</p>
+          </div>
+          <button class="secondary icon-button" id="settings-close" type="button" aria-label="Close" title="Close">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <div class="event-switcher">
+          <div class="event-summary">
+            <span class="muted">Firestore Event</span>
+            <strong id="event-current">-</strong>
+            <small class="muted" id="event-current-root">/events/-</small>
+          </div>
+          <div class="event-controls">
+            <label for="event-select">Select event</label>
+            <div class="event-select-row">
+              <select id="event-select"></select>
+              <button class="secondary icon-button" id="event-refresh" type="button" aria-label="Refresh events" title="Refresh events">
+                <i data-lucide="refresh-cw"></i>
+              </button>
+            </div>
+          </div>
+          <form class="event-create" id="event-create-form">
+            <label for="event-create-id">Create or open event</label>
+            <div class="event-create-row">
+              <input id="event-create-id" type="text" placeholder="event-2026" autocomplete="off" />
+              <button class="success icon-button" id="event-create-button" type="submit" aria-label="Create event" title="Create event">
+                <i data-lucide="plus"></i>
+              </button>
+            </div>
+          </form>
+          <p class="event-message" id="event-message"></p>
+        </div>
+
+        <section class="settings-section">
+          <h3>Event</h3>
+          <div class="settings-grid">
+            <label class="settings-field">
+              Participant limit
+              <input id="settings-print-limit" type="number" min="0" max="1000" step="1" />
+            </label>
+            <label class="settings-field">
+              Language
+              <select id="settings-language"></select>
+            </label>
+            <label class="settings-toggle">
+              <input id="settings-auto-print-main" type="checkbox" />
+              Auto-print cards when ready
+            </label>
+            <label class="settings-toggle">
+              <input id="settings-auto-print-stickers" type="checkbox" />
+              Auto-print stickers when ready
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3>WhatsApp Twilio</h3>
+          <div class="settings-grid">
+            <label class="settings-field">
+              Configuration mode
+              <select id="settings-twilio-mode">
+                <option value="default">Use .env default</option>
+                <option value="custom">Customize this event</option>
+              </select>
+            </label>
+            <div class="settings-field">
+              Default configuration
+              <input id="settings-twilio-default" type="text" readonly />
+            </div>
+          </div>
+          <div class="settings-grid hidden" id="settings-twilio-custom-fields">
+            <label class="settings-field">
+              Account SID
+              <input id="settings-twilio-account-sid" type="text" autocomplete="off" />
+            </label>
+            <label class="settings-field">
+              Auth Token
+              <input id="settings-twilio-auth-token" type="password" autocomplete="new-password" />
+            </label>
+            <label class="settings-field">
+              Messaging Service SID
+              <input id="settings-twilio-messaging-service-sid" type="text" autocomplete="off" placeholder="MG..." />
+            </label>
+            <label class="settings-field">
+              WhatsApp From
+              <input id="settings-twilio-whatsapp-from" type="text" autocomplete="off" placeholder="whatsapp:+5511999999999" />
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3>Webhook Twilio</h3>
+          <label class="settings-field">
+            URL to configure in the WhatsApp Sender
+            <div class="webhook-row">
+              <input id="settings-webhook-url" type="text" readonly />
+              <button class="secondary icon-button" id="settings-copy-webhook" type="button" aria-label="Copy URL" title="Copy URL">
+                <i data-lucide="copy"></i>
+              </button>
+            </div>
+          </label>
+        </section>
+
+        <section class="settings-section">
+          <h3>Search App</h3>
+          <label class="settings-field">
+            Event search URL
+            <div class="webhook-row">
+              <input id="settings-search-url" type="text" readonly />
+              <button class="secondary icon-button" id="settings-copy-search" type="button" aria-label="Copy search URL" title="Copy search URL">
+                <i data-lucide="copy"></i>
+              </button>
+            </div>
+          </label>
+        </section>
+
+        <div class="settings-actions">
+          <p class="event-message" id="settings-message"></p>
+          <button class="success" id="settings-save" type="button">Save Settings</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="zoom-modal hidden" id="zoom-modal" role="dialog" aria-modal="true" aria-label="Enlarged sticker">
       <div class="zoom-frame">
         <div class="zoom-toolbar">
-          <button class="secondary icon-button" id="zoom-close" type="button" aria-label="Fechar" title="Fechar">
+          <button class="secondary icon-button" id="zoom-close" type="button" aria-label="Close" title="Close">
             <i data-lucide="x"></i>
           </button>
         </div>
         <div class="zoom-stage">
-          <button class="secondary icon-button zoom-nav zoom-prev" id="zoom-prev" type="button" aria-label="Sticker anterior" title="Sticker anterior">
+          <button class="secondary icon-button zoom-nav zoom-prev" id="zoom-prev" type="button" aria-label="Previous sticker" title="Previous sticker">
             <i data-lucide="chevron-left"></i>
           </button>
           <img id="zoom-image" alt="" />
-          <button class="secondary icon-button zoom-nav zoom-next" id="zoom-next" type="button" aria-label="Próximo sticker" title="Próximo sticker">
+          <button class="secondary icon-button zoom-nav zoom-next" id="zoom-next" type="button" aria-label="Next sticker" title="Next sticker">
             <i data-lucide="chevron-right"></i>
           </button>
         </div>
         <div class="zoom-footer">
-          <button class="success" id="zoom-resend" type="button">Reenviar WhatsApp</button>
+          <button class="success" id="zoom-resend" type="button">Resend WhatsApp</button>
         </div>
       </div>
     </div>
@@ -1240,10 +1468,10 @@
       <section class="compare-panel">
         <div class="compare-panel-header">
           <div>
-            <h2 id="compare-title">Comparar imagens</h2>
+            <h2 id="compare-title">Compare Images</h2>
             <p class="muted" id="compare-subtitle"></p>
           </div>
-          <button class="secondary icon-button" id="compare-close" type="button" aria-label="Fechar" title="Fechar">
+          <button class="secondary icon-button" id="compare-close" type="button" aria-label="Close" title="Close">
             <i data-lucide="x"></i>
           </button>
         </div>
@@ -1251,13 +1479,13 @@
           <div class="compare-frame">
             <h3>Original</h3>
             <div class="compare-image" id="compare-original">
-              <span class="muted">Original indisponível</span>
+              <span class="muted">Original unavailable</span>
             </div>
           </div>
           <div class="compare-frame">
-            <h3>Cartão</h3>
+            <h3>Card</h3>
             <div class="compare-image" id="compare-generated">
-              <span class="muted">Cartão indisponível</span>
+              <span class="muted">Card unavailable</span>
             </div>
           </div>
         </div>
@@ -1268,10 +1496,10 @@
       <section class="error-panel">
         <div class="error-panel-header">
           <div>
-            <h2 id="error-title">Detalhe do erro</h2>
+            <h2 id="error-title">Error Details</h2>
             <p class="muted" id="error-subtitle"></p>
           </div>
-          <button class="secondary icon-button" id="error-close" type="button" aria-label="Fechar" title="Fechar">
+          <button class="secondary icon-button" id="error-close" type="button" aria-label="Close" title="Close">
             <i data-lucide="x"></i>
           </button>
         </div>
@@ -1283,36 +1511,36 @@
       <section class="print-panel">
         <div class="print-panel-header">
           <div>
-            <h2 id="print-modal-title">Imprimir</h2>
+            <h2 id="print-modal-title">Print</h2>
             <p class="muted" id="print-modal-subtitle"></p>
           </div>
-          <button class="secondary icon-button" id="print-modal-close" type="button" aria-label="Fechar" title="Fechar">
+          <button class="secondary icon-button" id="print-modal-close" type="button" aria-label="Close" title="Close">
             <i data-lucide="x"></i>
           </button>
         </div>
         <div class="print-preview">
           <div class="print-preview-card" id="print-card-preview">
-            <span class="muted">Cartão indisponível</span>
+            <span class="muted">Card unavailable</span>
           </div>
           <div class="print-preview-stickers" id="print-stickers-preview">
-            <span class="muted">Stickers indisponíveis</span>
+            <span class="muted">Stickers unavailable</span>
           </div>
         </div>
         <div class="print-options">
-          <button class="secondary" id="print-main-option" type="button">Cartão</button>
+          <button class="secondary" id="print-main-option" type="button">Card</button>
           <button class="success" id="print-stickers-option" type="button">Stickers</button>
         </div>
       </section>
     </div>
 
-    <div class="composition-modal hidden" id="composition-modal" role="dialog" aria-modal="true" aria-label="Ajustar cartão">
+    <div class="composition-modal hidden" id="composition-modal" role="dialog" aria-modal="true" aria-label="Adjust card">
       <section class="composition-panel">
         <div class="composition-panel-header">
           <div>
-            <h2 id="composition-title">Ajustar cartão</h2>
+            <h2 id="composition-title">Adjust Card</h2>
             <p class="muted" id="composition-subtitle"></p>
           </div>
-          <button class="secondary" id="composition-close" type="button">Fechar</button>
+          <button class="secondary" id="composition-close" type="button">Close</button>
         </div>
 
         <div class="composition-layout">
@@ -1322,7 +1550,7 @@
               <img id="composition-subject-image" alt="" />
             </div>
             <img class="composition-layer composition-overlay" id="composition-overlay" alt="" aria-hidden="true" />
-            <div class="composition-control" id="composition-control" aria-label="Área do cartão">
+            <div class="composition-control" id="composition-control" aria-label="Card area">
               <span class="composition-handle" data-handle="n" aria-hidden="true"></span>
               <span class="composition-handle" data-handle="e" aria-hidden="true"></span>
               <span class="composition-handle" data-handle="s" aria-hidden="true"></span>
@@ -1337,11 +1565,11 @@
           <div>
             <div class="composition-fields">
               <label class="composition-field">
-                Fundo
+                Background
                 <input id="composition-background-color" type="text" maxlength="16" />
               </label>
               <label class="composition-field">
-                Ajuste
+                Fit
                 <select id="composition-fit">
                   <option value="contain">contain</option>
                   <option value="cover">cover</option>
@@ -1357,11 +1585,11 @@
                 <input id="composition-top" type="number" step="1" />
               </label>
               <label class="composition-field">
-                Largura
+                Width
                 <input id="composition-width" type="number" min="100" step="1" />
               </label>
               <label class="composition-field">
-                Altura
+                Height
                 <input id="composition-height" type="number" min="100" step="1" />
               </label>
             </div>
@@ -1371,8 +1599,8 @@
         <div class="composition-panel-actions">
           <p class="composition-message" id="composition-message"></p>
           <div class="actions">
-            <button class="secondary" id="composition-save-default" type="button">Salvar como padrão</button>
-            <button class="success" id="composition-regenerate" type="button">Regerar cartão</button>
+            <button class="secondary" id="composition-save-default" type="button">Save as Default</button>
+            <button class="success" id="composition-regenerate" type="button">Regenerate Card</button>
           </div>
         </div>
       </section>
@@ -1389,6 +1617,7 @@
         eventId: '',
         preferredEventId: '',
         eventRows: [],
+        managerConfig: null,
         db: null,
         auth: null,
         eventUnsubscribe: null,
@@ -1427,9 +1656,12 @@
       const profilesCount = document.getElementById('profiles-count');
       const imagesCount = document.getElementById('images-count');
       const clearProfileFilter = document.getElementById('clear-profile-filter');
+      const settingsButton = document.getElementById('settings-button');
       const mainPrintCount = document.getElementById('main-print-count');
       const stickerPrintCount = document.getElementById('sticker-print-count');
       const printStatusFilter = document.getElementById('print-status-filter');
+      const clearMainPrints = document.getElementById('clear-main-prints');
+      const clearStickerPrints = document.getElementById('clear-sticker-prints');
       const metricPhotosGenerated = document.getElementById('metric-photos-generated');
       const metricMainPrinted = document.getElementById('metric-main-printed');
       const metricStickersPrinted = document.getElementById('metric-stickers-printed');
@@ -1466,6 +1698,25 @@
       const eventCreateId = document.getElementById('event-create-id');
       const eventCreateButton = document.getElementById('event-create-button');
       const eventMessage = document.getElementById('event-message');
+      const settingsModal = document.getElementById('settings-modal');
+      const settingsClose = document.getElementById('settings-close');
+      const settingsSave = document.getElementById('settings-save');
+      const settingsMessage = document.getElementById('settings-message');
+      const settingsPrintLimit = document.getElementById('settings-print-limit');
+      const settingsLanguage = document.getElementById('settings-language');
+      const settingsAutoPrintMain = document.getElementById('settings-auto-print-main');
+      const settingsAutoPrintStickers = document.getElementById('settings-auto-print-stickers');
+      const settingsWebhookUrl = document.getElementById('settings-webhook-url');
+      const settingsCopyWebhook = document.getElementById('settings-copy-webhook');
+      const settingsSearchUrl = document.getElementById('settings-search-url');
+      const settingsCopySearch = document.getElementById('settings-copy-search');
+      const settingsTwilioMode = document.getElementById('settings-twilio-mode');
+      const settingsTwilioDefault = document.getElementById('settings-twilio-default');
+      const settingsTwilioCustomFields = document.getElementById('settings-twilio-custom-fields');
+      const settingsTwilioAccountSid = document.getElementById('settings-twilio-account-sid');
+      const settingsTwilioAuthToken = document.getElementById('settings-twilio-auth-token');
+      const settingsTwilioMessagingServiceSid = document.getElementById('settings-twilio-messaging-service-sid');
+      const settingsTwilioWhatsAppFrom = document.getElementById('settings-twilio-whatsapp-from');
       const compositionModal = document.getElementById('composition-modal');
       const compositionTitle = document.getElementById('composition-title');
       const compositionSubtitle = document.getElementById('composition-subtitle');
@@ -1497,7 +1748,7 @@
         applyManagerConfig(config);
 
         if (!config.firebaseConfig || !config.firebaseConfig.apiKey) {
-          authMessage.textContent = 'Firebase publico nao configurado no ambiente.';
+          authMessage.textContent = 'Firebase public config is not configured in the environment.';
           return;
         }
 
@@ -1507,6 +1758,12 @@
 
         document.getElementById('login-button').addEventListener('click', login);
         logoutButton.addEventListener('click', () => state.auth.signOut());
+        settingsButton.addEventListener('click', openSettingsModal);
+        settingsClose.addEventListener('click', closeSettingsModal);
+        settingsSave.addEventListener('click', saveEventSettings);
+        settingsCopyWebhook.addEventListener('click', copyWebhookUrl);
+        settingsCopySearch.addEventListener('click', copySearchUrl);
+        settingsTwilioMode.addEventListener('change', syncTwilioModeVisibility);
         eventSelect.addEventListener('change', () => switchManagerEvent(eventSelect.value));
         eventRefresh.addEventListener('click', loadAvailableEvents);
         eventCreateForm.addEventListener('submit', createManagerEvent);
@@ -1514,6 +1771,8 @@
           state.printStatusFilter = printStatusFilter.value;
           renderPrintLists();
         });
+        clearMainPrints.addEventListener('click', () => clearPrintQueueAction('main', clearMainPrints));
+        clearStickerPrints.addEventListener('click', () => clearPrintQueueAction('stickers', clearStickerPrints));
         clearProfileFilter.addEventListener('click', clearSelectedProfile);
         zoomClose.addEventListener('click', closeStickerZoom);
         zoomResend.addEventListener('click', resendZoomSticker);
@@ -1556,6 +1815,11 @@
             closePrintDialog();
           }
         });
+        settingsModal.addEventListener('click', (event) => {
+          if (event.target === settingsModal) {
+            closeSettingsModal();
+          }
+        });
         compositionModal.addEventListener('click', (event) => {
           if (event.target === compositionModal) {
             closeCompositionEditor();
@@ -1580,6 +1844,9 @@
           if (event.key === 'Escape' && !printModal.classList.contains('hidden')) {
             closePrintDialog();
           }
+          if (event.key === 'Escape' && !settingsModal.classList.contains('hidden')) {
+            closeSettingsModal();
+          }
           if (event.key === 'Escape' && !compositionModal.classList.contains('hidden')) {
             closeCompositionEditor();
           }
@@ -1599,6 +1866,7 @@
             authPanel.classList.add('hidden');
             managerPanel.classList.remove('hidden');
             logoutButton.classList.remove('hidden');
+            settingsButton.classList.remove('hidden');
             await loadAvailableEvents();
 
             if (state.preferredEventId && state.preferredEventId !== state.eventId) {
@@ -1610,6 +1878,7 @@
             authPanel.classList.remove('hidden');
             managerPanel.classList.add('hidden');
             logoutButton.classList.add('hidden');
+            settingsButton.classList.add('hidden');
             stopListeners();
           }
         });
@@ -1640,13 +1909,14 @@
         const payload = await response.json().catch(() => ({ message: response.statusText }));
 
         if (!response.ok) {
-          throw new Error(payload.message || 'Falha ao carregar configuracao do manager.');
+          throw new Error(payload.message || 'Failed to load manager configuration.');
         }
 
         return payload;
       }
 
       function applyManagerConfig(config) {
+        state.managerConfig = config;
         state.eventId = config.eventId || state.eventId;
         state.preferredEventId = state.eventId;
         localStorage.setItem(SELECTED_EVENT_STORAGE_KEY, state.eventId);
@@ -1660,6 +1930,127 @@
         if (config.printLimitPerProfile !== null && config.printLimitPerProfile !== undefined) {
           metricPrintLimit.textContent = formatNumber(config.printLimitPerProfile);
         }
+
+        populateSettingsForm(config);
+      }
+
+      function openSettingsModal() {
+        populateSettingsForm(state.managerConfig || {});
+        settingsMessage.textContent = '';
+        settingsModal.classList.remove('hidden');
+      }
+
+      function closeSettingsModal() {
+        settingsModal.classList.add('hidden');
+        settingsMessage.textContent = '';
+      }
+
+      function populateSettingsForm(config = {}) {
+        const twilio = config.twilio || {};
+        const defaults = config.twilioDefaults || {};
+        const mode = twilio.mode === 'custom' ? 'custom' : 'default';
+        const languages = Array.isArray(config.supportedLanguages) && config.supportedLanguages.length
+          ? config.supportedLanguages
+          : [{ code: 'pt-br', label: 'Portuguese (Brazil)' }];
+
+        settingsPrintLimit.value = config.printLimitPerProfile ?? '';
+        settingsAutoPrintMain.checked = config.printAutomation?.autoPrintMainOnReady === true;
+        settingsAutoPrintStickers.checked = config.printAutomation?.autoPrintStickerSheetOnReady === true;
+        settingsLanguage.innerHTML = languages
+          .map((language) => `<option value="${escapeAttr(language.code)}">${escapeHtml(language.label)}</option>`)
+          .join('');
+        settingsLanguage.value = config.language || 'pt-br';
+        settingsWebhookUrl.value = config.whatsappWebhookUrl || buildWebhookUrlFromState();
+        settingsSearchUrl.value = buildSearchUrlFromState();
+        settingsTwilioMode.value = mode;
+        settingsTwilioDefault.value = buildTwilioDefaultLabel(defaults);
+        settingsTwilioAccountSid.value = twilio.accountSid || '';
+        settingsTwilioAuthToken.value = '';
+        settingsTwilioAuthToken.placeholder = twilio.hasAuthToken
+          ? 'Saved token: leave blank to keep it'
+          : 'Auth token';
+        settingsTwilioMessagingServiceSid.value = twilio.messagingServiceSid || '';
+        settingsTwilioWhatsAppFrom.value = twilio.whatsAppFrom || '';
+        syncTwilioModeVisibility();
+      }
+
+      function buildWebhookUrlFromState() {
+        return `${window.location.origin}/api/photobooth/whatsapp/${encodeURIComponent(state.eventId || '')}`;
+      }
+
+      function buildSearchUrlFromState() {
+        return `${window.location.origin}/search/${encodeURIComponent(state.eventId || '')}`;
+      }
+
+      function buildTwilioDefaultLabel(defaults = {}) {
+        if (!defaults.configured) {
+          return '.env default is not fully configured';
+        }
+
+        const sender = defaults.messagingServiceSid || defaults.whatsAppFrom || 'no sender';
+
+        return `${defaults.accountSid || 'Account SID'} · ${sender}`;
+      }
+
+      function syncTwilioModeVisibility() {
+        const isCustom = settingsTwilioMode.value === 'custom';
+
+        settingsTwilioCustomFields.classList.toggle('hidden', !isCustom);
+      }
+
+      async function copyWebhookUrl() {
+        await copySettingsUrl(settingsWebhookUrl);
+      }
+
+      async function copySearchUrl() {
+        await copySettingsUrl(settingsSearchUrl);
+      }
+
+      async function copySettingsUrl(input) {
+        const value = input.value;
+
+        if (!value) {
+          return;
+        }
+
+        try {
+          await navigator.clipboard.writeText(value);
+          settingsMessage.textContent = 'URL copied.';
+        } catch (error) {
+          input.select();
+          settingsMessage.textContent = 'Copy the selected URL.';
+        }
+      }
+
+      async function saveEventSettings() {
+        settingsSave.disabled = true;
+        settingsMessage.textContent = 'Saving settings.';
+
+        try {
+          const response = await apiPost('/api/photobooth/manager/event-config', {
+            printLimitPerProfile: settingsPrintLimit.value,
+            language: settingsLanguage.value || 'pt-br',
+            printAutomation: {
+              autoPrintMainOnReady: settingsAutoPrintMain.checked,
+              autoPrintStickerSheetOnReady: settingsAutoPrintStickers.checked,
+            },
+            twilio: {
+              mode: settingsTwilioMode.value,
+              accountSid: settingsTwilioAccountSid.value,
+              authToken: settingsTwilioAuthToken.value,
+              messagingServiceSid: settingsTwilioMessagingServiceSid.value,
+              whatsAppFrom: settingsTwilioWhatsAppFrom.value,
+            },
+          });
+
+          applyManagerConfig(response);
+          await loadAvailableEvents();
+          settingsMessage.textContent = 'Settings saved.';
+        } catch (error) {
+          settingsMessage.textContent = error.message || 'Failed to save settings.';
+        } finally {
+          settingsSave.disabled = false;
+        }
       }
 
       async function loadAvailableEvents() {
@@ -1667,20 +2058,20 @@
           return;
         }
 
-        eventMessage.textContent = 'Carregando eventos.';
+        eventMessage.textContent = 'Loading events.';
 
         try {
           const payload = await apiGet('/api/photobooth/manager/events', { withEvent: false });
-          state.eventRows = payload.events || [];
+          state.eventRows = sortEventsByLabel(payload.events || []);
           renderEventOptions();
           eventMessage.textContent = '';
         } catch (error) {
-          eventMessage.textContent = error.message || 'Falha ao carregar eventos.';
+          eventMessage.textContent = error.message || 'Failed to load events.';
         }
       }
 
       function renderEventOptions() {
-        const rows = [...state.eventRows];
+        const rows = sortEventsByLabel(state.eventRows);
 
         if (state.eventId && !rows.some((event) => event.id === state.eventId)) {
           rows.unshift({
@@ -1713,6 +2104,18 @@
         return eventId || '-';
       }
 
+      function sortEventsByLabel(events) {
+        return [...events].sort((a, b) => {
+          const labelA = String(a.name || a.id || a.eventId || '').toLowerCase();
+          const labelB = String(b.name || b.id || b.eventId || '').toLowerCase();
+
+          return labelA.localeCompare(labelB, 'en-US', {
+            numeric: true,
+            sensitivity: 'base',
+          });
+        });
+      }
+
       async function switchManagerEvent(eventId) {
         const nextEventId = normalizeEventId(eventId);
 
@@ -1721,7 +2124,7 @@
           return;
         }
 
-        eventMessage.textContent = 'Trocando evento.';
+        eventMessage.textContent = 'Switching event.';
         stopListeners();
         resetEventScopedUi();
 
@@ -1734,14 +2137,14 @@
             startEventListeners();
           }
 
-          eventMessage.textContent = 'Evento ativo.';
+          eventMessage.textContent = 'Event active.';
           setTimeout(() => {
-            if (eventMessage.textContent === 'Evento ativo.') {
+            if (eventMessage.textContent === 'Event active.') {
               eventMessage.textContent = '';
             }
           }, 1500);
         } catch (error) {
-          eventMessage.textContent = error.message || 'Falha ao trocar evento.';
+          eventMessage.textContent = error.message || 'Failed to switch event.';
           eventSelect.value = state.eventId;
           startEventListeners();
         }
@@ -1753,12 +2156,12 @@
         const eventId = normalizeEventId(eventCreateId.value);
 
         if (!eventId) {
-          eventMessage.textContent = 'Informe um identificador para o evento.';
+          eventMessage.textContent = 'Enter an event identifier.';
           return;
         }
 
         eventCreateButton.disabled = true;
-        eventMessage.textContent = 'Criando evento.';
+        eventMessage.textContent = 'Creating event.';
 
         try {
           const payload = await apiPost('/api/photobooth/manager/events', { eventId }, { withEvent: false });
@@ -1766,7 +2169,7 @@
           await loadAvailableEvents();
           await switchManagerEvent(nextEventId);
         } catch (error) {
-          eventMessage.textContent = error.message || 'Falha ao criar evento.';
+          eventMessage.textContent = error.message || 'Failed to create event.';
         } finally {
           eventCreateButton.disabled = false;
         }
@@ -1782,28 +2185,29 @@
       function resetEventScopedUi() {
         state.selectedProfile = null;
         state.printRows = [];
-        profilesCount.textContent = '0 participante(s)';
-        imagesCount.textContent = '0 imagem(ns)';
-        mainPrintCount.textContent = '0/0 item(ns)';
-        stickerPrintCount.textContent = '0/0 item(ns)';
+        profilesCount.textContent = '0 participant(s)';
+        imagesCount.textContent = '0 image(s)';
+        mainPrintCount.textContent = '0/0 item(s)';
+        stickerPrintCount.textContent = '0/0 item(s)';
         metricPhotosGenerated.textContent = '0';
         metricMainPrinted.textContent = '0';
         metricStickersPrinted.textContent = '0';
         metricGenerationAverage.textContent = '0s';
-        profilesEl.innerHTML = '<div class="empty">Carregando participantes.</div>';
-        imagesEl.innerHTML = '<div class="empty">Carregando imagens.</div>';
-        mainPrintsEl.innerHTML = '<div class="empty">Carregando fila.</div>';
-        stickerPrintsEl.innerHTML = '<div class="empty">Carregando fila.</div>';
+        profilesEl.innerHTML = '<div class="empty">Loading participants.</div>';
+        imagesEl.innerHTML = '<div class="empty">Loading images.</div>';
+        mainPrintsEl.innerHTML = '<div class="empty">Loading queue.</div>';
+        stickerPrintsEl.innerHTML = '<div class="empty">Loading queue.</div>';
       }
 
       function setActiveTab(tab) {
-        const next = tab === 'profiles' ? 'profiles' : 'images';
+        const next = ['images', 'profiles', 'prints'].includes(tab) ? tab : 'images';
 
         document.querySelectorAll('[data-tab]').forEach((button) => {
           button.classList.toggle('active', button.dataset.tab === next);
         });
         document.getElementById('images-tab').classList.toggle('hidden', next !== 'images');
         document.getElementById('profiles-tab').classList.toggle('hidden', next !== 'profiles');
+        document.getElementById('prints-tab').classList.toggle('hidden', next !== 'prints');
       }
 
       function listenEventStats() {
@@ -1846,11 +2250,11 @@
           .orderBy('updatedAt', 'desc')
           .limit(120)
           .onSnapshot((snapshot) => {
-            profilesCount.textContent = `${snapshot.size} participante(s)`;
+            profilesCount.textContent = `${snapshot.size} participant(s)`;
             profilesEl.innerHTML = '';
 
             if (!snapshot.size) {
-              profilesEl.innerHTML = '<div class="empty">Nenhum participante encontrado.</div>';
+              profilesEl.innerHTML = '<div class="empty">No participants found.</div>';
               return;
             }
 
@@ -1897,15 +2301,15 @@
           ? ` ${maskPhone(state.selectedProfile.phone)}`
           : '';
         imagesCount.textContent = state.selectedProfile
-          ? `${rows.length} imagem(ns) de ${scopedName}${scopedPhone}`
-          : `${rows.length} imagem(ns)`;
+          ? `${rows.length} image(s) for ${scopedName}${scopedPhone}`
+          : `${rows.length} image(s)`;
         clearProfileFilter.classList.toggle('hidden', !state.selectedProfile);
         imagesEl.innerHTML = '';
 
         if (!rows.length) {
           imagesEl.innerHTML = state.selectedProfile
-            ? '<div class="empty">Nenhuma imagem encontrada para este participante.</div>'
-            : '<div class="empty">Nenhuma imagem encontrada.</div>';
+            ? '<div class="empty">No images found for this participant.</div>'
+            : '<div class="empty">No images found.</div>';
           return;
         }
 
@@ -1945,19 +2349,19 @@
         const mainDocs = filteredRows.filter((row) => row.data.type === 'main');
         const stickerDocs = filteredRows.filter((row) => row.data.type !== 'main');
 
-        mainPrintCount.textContent = `${mainDocs.length}/${totalMain} item(ns)`;
-        stickerPrintCount.textContent = `${stickerDocs.length}/${totalStickers} item(ns)`;
+        mainPrintCount.textContent = `${mainDocs.length}/${totalMain} item(s)`;
+        stickerPrintCount.textContent = `${stickerDocs.length}/${totalStickers} item(s)`;
         mainPrintsEl.innerHTML = '';
         stickerPrintsEl.innerHTML = '';
 
         if (!mainDocs.length) {
-          mainPrintsEl.innerHTML = '<div class="empty">Nenhum cartão neste status.</div>';
+          mainPrintsEl.innerHTML = '<div class="empty">No cards in this status.</div>';
         } else {
           mainDocs.forEach((row) => mainPrintsEl.appendChild(renderPrintItem(row.id, row.data)));
         }
 
         if (!stickerDocs.length) {
-          stickerPrintsEl.innerHTML = '<div class="empty">Nenhum sticker neste status.</div>';
+          stickerPrintsEl.innerHTML = '<div class="empty">No stickers in this status.</div>';
         } else {
           stickerDocs.forEach((row) => stickerPrintsEl.appendChild(renderPrintItem(row.id, row.data)));
         }
@@ -1988,12 +2392,12 @@
         const subjectUrl = getMainSubjectUrl(item);
         const stickerSheetUrl = getStickerSheetUrl(item);
         const stickerItems = getStickerItems(item);
-        const participantName = item.profile?.profileName || 'Participante';
+        const participantName = item.profile?.profileName || 'Participant';
         const phone = item.profile?.phoneNumber || '';
         const status = item.status || 'pending';
         const isError = isImageErrorStatus(status);
         const statusMarkup = isError
-          ? `<button type="button" class="status status-button ${escapeAttr(status)}" data-action="show-error" aria-label="Ver detalhe do erro" title="Ver detalhe do erro">${escapeHtml(status)}</button>`
+          ? `<button type="button" class="status status-button ${escapeAttr(status)}" data-action="show-error" aria-label="View error details" title="View error details">${escapeHtml(status)}</button>`
           : `<span class="status ${escapeAttr(status)}">${escapeHtml(status)}</span>`;
         const generation = item.generation || {};
         const durationLabel = generation.lastDurationMs
@@ -2003,7 +2407,7 @@
         article.innerHTML = `
           <div class="preview">
             ${durationLabel ? `<span class="duration-badge">${escapeHtml(durationLabel)}</span>` : ''}
-            ${mainUrl ? `<img src="${mainUrl}" alt="${escapeHtml(participantName)}" loading="lazy" />` : '<span class="muted">sem cartão</span>'}
+            ${mainUrl ? `<img src="${mainUrl}" alt="${escapeHtml(participantName)}" loading="lazy" />` : '<span class="muted">no card</span>'}
           </div>
           <div class="package-body">
             <div class="package-title">
@@ -2013,7 +2417,7 @@
               </div>
             </div>
             <div class="package-meta">
-              ${stickerSheetUrl ? '<span class="meta-pill">sheet pronto</span>' : '<span class="meta-pill">sheet aguardando</span>'}
+              ${stickerSheetUrl ? '<span class="meta-pill">sheet ready</span>' : '<span class="meta-pill">sheet pending</span>'}
             </div>
             <div class="stickers">
               ${stickerItems.length ? stickerItems.map((sticker, index) => `
@@ -2026,20 +2430,20 @@
                 >
                   <img src="${escapeHtml(sticker.url)}" alt="${escapeHtml(sticker.title)}" loading="lazy" />
                 </button>
-              `).join('') : '<span class="muted">stickers indisponiveis</span>'}
+              `).join('') : '<span class="muted">stickers unavailable</span>'}
             </div>
             <div class="status-row">
               ${statusMarkup}
             </div>
             <div class="actions">
-              <button type="button" class="secondary icon-button" data-action="compare-original" ${originalUrl ? '' : 'disabled'} aria-label="Comparar original e cartão" title="Comparar original e cartão"><i data-lucide="image"></i></button>
-              <button type="button" class="icon-button" data-action="regenerate" aria-label="Regerar" title="Regerar"><i data-lucide="refresh-cw"></i></button>
+              <button type="button" class="secondary icon-button" data-action="compare-original" ${originalUrl ? '' : 'disabled'} aria-label="Compare original and card" title="Compare original and card"><i data-lucide="image"></i></button>
+              <button type="button" class="icon-button" data-action="regenerate" aria-label="Regenerate" title="Regenerate"><i data-lucide="refresh-cw"></i></button>
               ${isError ? '' : `
-                <button type="button" class="secondary icon-button" data-action="adjust-main" ${subjectUrl ? '' : 'disabled'} aria-label="Ajustar cartão" title="Ajustar cartão"><i data-lucide="move"></i></button>
-                <button type="button" class="success icon-button" data-action="print-menu" aria-label="Imprimir" title="Imprimir"><i data-lucide="printer"></i></button>
+                <button type="button" class="secondary icon-button" data-action="adjust-main" ${subjectUrl ? '' : 'disabled'} aria-label="Adjust card" title="Adjust card"><i data-lucide="move"></i></button>
+                <button type="button" class="success icon-button" data-action="print-menu" aria-label="Print" title="Print"><i data-lucide="printer"></i></button>
                 ${stickerSheetUrl
-                  ? `<a class="button-link secondary icon-button" href="${escapeHtml(stickerSheetUrl)}" download target="_blank" rel="noopener" aria-label="Baixar stickers" title="Baixar stickers"><i data-lucide="download"></i></a>`
-                  : '<button type="button" class="secondary icon-button" disabled aria-label="Baixar stickers" title="Baixar stickers"><i data-lucide="download"></i></button>'}
+                  ? `<a class="button-link secondary icon-button" href="${escapeHtml(stickerSheetUrl)}" download target="_blank" rel="noopener" aria-label="Download stickers" title="Download stickers"><i data-lucide="download"></i></a>`
+                  : '<button type="button" class="secondary icon-button" disabled aria-label="Download stickers" title="Download stickers"><i data-lucide="download"></i></button>'}
               `}
             </div>
           </div>
@@ -2100,8 +2504,8 @@
         const stats = item.stats || {};
         const prints = stats.prints || {};
         const generation = stats.generation || {};
-        const name = item.profileName || item.whatsappProfile?.profileName || 'Participante';
-        const unlimited = item.unlimited === true ? ' · ilimitado' : '';
+        const name = item.profileName || item.whatsappProfile?.profileName || 'Participant';
+        const unlimited = item.unlimited === true ? ' · unlimited' : '';
         const isSelected = state.selectedProfile && state.selectedProfile.id === profileId;
 
         if (isSelected) {
@@ -2115,19 +2519,19 @@
           </div>
           <div class="participant-stat">
             ${formatNumber(stats.imagesSubmitted)}
-            <span>recebidas</span>
+            <span>received</span>
           </div>
           <div class="participant-stat">
             ${formatNumber(stats.photosGenerated)}
-            <span>geradas</span>
+            <span>generated</span>
           </div>
           <div class="participant-stat">
             ${formatAverageDuration(generation)}
-            <span>tempo medio</span>
+            <span>avg time</span>
           </div>
           <div class="participant-stat">
             ${formatNumber(prints.mainPrinted)}
-            <span>cartões</span>
+            <span>cards</span>
           </div>
           <div class="participant-stat">
             ${formatNumber(prints.stickersPrinted)}
@@ -2139,8 +2543,8 @@
               class="${item.unlimited === true ? 'warning' : 'success'} icon-button"
               data-action="toggle-unlimited"
               aria-pressed="${item.unlimited === true ? 'true' : 'false'}"
-              aria-label="${item.unlimited === true ? 'Desativar ilimitado' : 'Ativar ilimitado'}"
-              title="${item.unlimited === true ? 'Desativar ilimitado' : 'Ativar ilimitado'}"
+              aria-label="${item.unlimited === true ? 'Disable unlimited' : 'Enable unlimited'}"
+              title="${item.unlimited === true ? 'Disable unlimited' : 'Enable unlimited'}"
             >
               <i data-lucide="${item.unlimited === true ? 'ban' : 'infinity'}"></i>
             </button>
@@ -2177,7 +2581,7 @@
       function selectProfileImages(profileId, name, phone) {
         state.selectedProfile = {
           id: profileId,
-          name: name || 'Participante',
+          name: name || 'Participant',
           phone: phone || '',
         };
         setActiveTab('images');
@@ -2214,7 +2618,7 @@
           <div class="queue-body">
             <div class="package-title">
               <div>
-                <h3>${escapeHtml(profile.profileName || 'Participante')}</h3>
+                <h3>${escapeHtml(profile.profileName || 'Participant')}</h3>
                 <p class="muted">${escapeHtml(maskPhone(profile.phoneNumber || ''))}</p>
               </div>
             </div>
@@ -2222,9 +2626,9 @@
               <span class="status ${escapeAttr(item.status || 'pending')}">${escapeHtml(item.status || 'pending')}</span>
             </div>
             <div class="actions">
-              <button type="button" class="secondary icon-button" data-status="pending" aria-label="Marcar como pendente" title="Pendente"><i data-lucide="clock"></i></button>
-              <button type="button" class="success icon-button" data-status="printed" aria-label="Marcar como impresso" title="Impresso"><i data-lucide="check"></i></button>
-              <button type="button" class="warning icon-button" data-status="cancelled" aria-label="Cancelar impressão" title="Cancelar"><i data-lucide="x"></i></button>
+              <button type="button" class="secondary icon-button" data-status="pending" aria-label="Mark as pending" title="Pending"><i data-lucide="clock"></i></button>
+              <button type="button" class="success icon-button" data-status="printed" aria-label="Mark as printed" title="Printed"><i data-lucide="check"></i></button>
+              <button type="button" class="warning icon-button" data-status="cancelled" aria-label="Cancel print" title="Cancel"><i data-lucide="x"></i></button>
             </div>
           </div>
         `;
@@ -2246,6 +2650,27 @@
 
       async function updatePrintStatus(printId, status) {
         await apiPost(`/api/photobooth/manager/prints/${encodeURIComponent(printId)}/status`, { status });
+      }
+
+      async function clearPrintQueueAction(type, button) {
+        const isMain = type === 'main';
+        const label = isMain ? 'card' : 'sticker';
+        const confirmed = window.confirm(
+          `Clear the open ${label} print queue? No participant message will be sent.`,
+        );
+
+        if (!confirmed) {
+          return;
+        }
+
+        button.disabled = true;
+
+        try {
+          const result = await apiPost('/api/photobooth/manager/prints/clear', { type });
+          alert(`${result.cleared || 0} ${label} print item(s) cancelled.`);
+        } finally {
+          button.disabled = false;
+        }
       }
 
       function isImageErrorStatus(status) {
@@ -2285,11 +2710,11 @@
         state.compareDialog = options || {};
         compareSubtitle.textContent = options.participantName || '';
         compareOriginal.innerHTML = options.originalUrl
-          ? `<img src="${escapeHtml(options.originalUrl)}" alt="Foto original" loading="lazy" />`
-          : '<span class="muted">Original indisponível</span>';
+          ? `<img src="${escapeHtml(options.originalUrl)}" alt="Original photo" loading="lazy" />`
+          : '<span class="muted">Original unavailable</span>';
         compareGenerated.innerHTML = options.mainUrl
-          ? `<img src="${escapeHtml(options.mainUrl)}" alt="Cartão gerado" loading="lazy" />`
-          : '<span class="muted">Cartão indisponível</span>';
+          ? `<img src="${escapeHtml(options.mainUrl)}" alt="Generated card" loading="lazy" />`
+          : '<span class="muted">Card unavailable</span>';
         compareModal.classList.remove('hidden');
         refreshIcons();
       }
@@ -2297,15 +2722,15 @@
       function closeCompareDialog() {
         compareModal.classList.add('hidden');
         compareSubtitle.textContent = '';
-        compareOriginal.innerHTML = '<span class="muted">Original indisponível</span>';
-        compareGenerated.innerHTML = '<span class="muted">Cartão indisponível</span>';
+        compareOriginal.innerHTML = '<span class="muted">Original unavailable</span>';
+        compareGenerated.innerHTML = '<span class="muted">Card unavailable</span>';
         state.compareDialog = null;
       }
 
       function openErrorDialog(options) {
         state.errorDialog = options || {};
-        errorSubtitle.textContent = `${options.participantName || 'Participante'} · ${options.status || 'error'}`;
-        errorDetails.textContent = options.details || 'Nenhum detalhe tecnico encontrado para esta imagem.';
+        errorSubtitle.textContent = `${options.participantName || 'Participant'} · ${options.status || 'error'}`;
+        errorDetails.textContent = options.details || 'No technical details found for this image.';
         errorModal.classList.remove('hidden');
         refreshIcons();
       }
@@ -2334,19 +2759,19 @@
       function closePrintDialog() {
         printModal.classList.add('hidden');
         printModalSubtitle.textContent = '';
-        printCardPreview.innerHTML = '<span class="muted">Cartão indisponível</span>';
-        printStickersPreview.innerHTML = '<span class="muted">Stickers indisponíveis</span>';
+        printCardPreview.innerHTML = '<span class="muted">Card unavailable</span>';
+        printStickersPreview.innerHTML = '<span class="muted">Stickers unavailable</span>';
         state.printDialog = null;
         printMainOption.disabled = false;
         printStickersOption.disabled = false;
-        printMainOption.textContent = 'Cartão';
+        printMainOption.textContent = 'Card';
         printStickersOption.textContent = 'Stickers';
       }
 
       function renderPrintDialogPreview(options) {
         printCardPreview.innerHTML = options.mainUrl
-          ? `<img src="${escapeHtml(options.mainUrl)}" alt="Cartão" loading="lazy" />`
-          : '<span class="muted">Cartão indisponível</span>';
+          ? `<img src="${escapeHtml(options.mainUrl)}" alt="Card" loading="lazy" />`
+          : '<span class="muted">Card unavailable</span>';
 
         const stickers = Array.isArray(options.stickerItems) ? options.stickerItems : [];
         printStickersPreview.innerHTML = stickers.length
@@ -2355,7 +2780,7 @@
               ${stickers.map((sticker) => `<img src="${escapeHtml(sticker.url)}" alt="${escapeHtml(sticker.title)}" loading="lazy" />`).join('')}
             </div>
           `
-          : '<span class="muted">Stickers indisponíveis</span>';
+          : '<span class="muted">Stickers unavailable</span>';
       }
 
       async function confirmPrintChoice(type) {
@@ -2374,7 +2799,7 @@
         const button = type === 'main' ? printMainOption : printStickersOption;
         const originalText = button.textContent;
         button.disabled = true;
-        button.textContent = 'Enviando...';
+        button.textContent = 'Sending...';
 
         try {
           await requestPrint(state.printDialog.imageId, type);
@@ -2408,18 +2833,18 @@
         const subjectUrl = getMainSubjectUrl(item);
 
         if (!subjectUrl) {
-          alert('Esta imagem ainda nao possui subject-png para reposicionamento.');
+          alert('This image does not have a subject PNG available for repositioning yet.');
           return;
         }
 
-        const participantName = item.profile?.profileName || 'Participante';
+        const participantName = item.profile?.profileName || 'Participant';
         const layout = normalizeComposition(getImageComposition(item));
 
         state.compositionEditor = {
           imageId,
           item,
         };
-        compositionTitle.textContent = 'Ajustar cartão';
+        compositionTitle.textContent = 'Adjust Card';
         compositionSubtitle.textContent = participantName;
         compositionSubjectImage.src = subjectUrl;
         compositionMessage.textContent = '';
@@ -2447,16 +2872,16 @@
 
         const layout = readCompositionInputs();
         compositionRegenerate.disabled = true;
-        compositionMessage.textContent = 'Recompondo cartão.';
+        compositionMessage.textContent = 'Recomposing card.';
 
         try {
           await apiPost(
             `/api/photobooth/manager/images/${encodeURIComponent(state.compositionEditor.imageId)}/main-composition/regenerate`,
             { composition: layout },
           );
-          compositionMessage.textContent = 'Principal recomposta e enviada por WhatsApp.';
+          compositionMessage.textContent = 'Card recomposed and sent by WhatsApp.';
         } catch (error) {
-          compositionMessage.textContent = error.message || 'Falha ao recompor cartão.';
+          compositionMessage.textContent = error.message || 'Failed to recompose card.';
         } finally {
           compositionRegenerate.disabled = false;
         }
@@ -2465,14 +2890,14 @@
       async function saveCompositionAsDefault() {
         const layout = readCompositionInputs();
         compositionSaveDefault.disabled = true;
-        compositionMessage.textContent = 'Salvando ajuste como padrao.';
+        compositionMessage.textContent = 'Saving adjustment as default.';
 
         try {
           const response = await apiPost('/api/photobooth/manager/main-composition', layout);
           applyMainCompositionConfig(response);
-          compositionMessage.textContent = 'Ajuste salvo no Firestore para as proximas imagens.';
+          compositionMessage.textContent = 'Adjustment saved in Firestore for future images.';
         } catch (error) {
-          compositionMessage.textContent = error.message || 'Falha ao salvar padrao.';
+          compositionMessage.textContent = error.message || 'Failed to save default.';
         } finally {
           compositionSaveDefault.disabled = false;
         }
@@ -2713,11 +3138,11 @@
 
         state.zoomSticker = sticker;
         zoomImage.src = sticker.url;
-        zoomImage.alt = sticker.title || 'Sticker ampliado';
+        zoomImage.alt = sticker.title || 'Enlarged sticker';
         zoomPrev.disabled = items.length < 2;
         zoomNext.disabled = items.length < 2;
         zoomResend.disabled = !sticker.imageId || !sticker.outputId;
-        zoomResend.textContent = 'Reenviar WhatsApp';
+        zoomResend.textContent = 'Resend WhatsApp';
       }
 
       function navigateStickerZoom(delta) {
@@ -2741,7 +3166,7 @@
         zoomPrev.disabled = false;
         zoomNext.disabled = false;
         zoomResend.disabled = false;
-        zoomResend.textContent = 'Reenviar WhatsApp';
+        zoomResend.textContent = 'Resend WhatsApp';
       }
 
       async function resendZoomSticker() {
@@ -2752,23 +3177,23 @@
         }
 
         zoomResend.disabled = true;
-        zoomResend.textContent = 'Reenviando...';
+        zoomResend.textContent = 'Resending...';
 
         try {
           await apiPost(
             `/api/photobooth/manager/images/${encodeURIComponent(sticker.imageId)}/stickers/${encodeURIComponent(sticker.outputId)}/resend`,
             {},
           );
-          zoomResend.textContent = 'Reenviado';
+          zoomResend.textContent = 'Resent';
           setTimeout(() => {
             if (state.zoomSticker === sticker) {
               zoomResend.disabled = false;
-              zoomResend.textContent = 'Reenviar WhatsApp';
+              zoomResend.textContent = 'Resend WhatsApp';
             }
           }, 1400);
         } catch (error) {
           zoomResend.disabled = false;
-          zoomResend.textContent = 'Reenviar WhatsApp';
+          zoomResend.textContent = 'Resend WhatsApp';
         }
       }
 
@@ -2786,8 +3211,8 @@
         const payload = await response.json().catch(() => ({ message: response.statusText }));
 
         if (!response.ok) {
-          alert(payload.message || 'Falha ao executar acao.');
-          throw new Error(payload.message || 'Falha ao executar acao.');
+          alert(payload.message || 'Failed to run action.');
+          throw new Error(payload.message || 'Failed to run action.');
         }
 
         return payload;
@@ -2812,8 +3237,8 @@
         const payload = await response.json().catch(() => ({ message: response.statusText }));
 
         if (!response.ok) {
-          alert(payload.message || 'Falha ao executar acao.');
-          throw new Error(payload.message || 'Falha ao executar acao.');
+          alert(payload.message || 'Failed to run action.');
+          throw new Error(payload.message || 'Failed to run action.');
         }
 
         return payload;
@@ -2947,7 +3372,7 @@
       }
 
       function formatNumber(value) {
-        return Number(value || 0).toLocaleString('pt-BR');
+        return Number(value || 0).toLocaleString('en-US');
       }
 
       function formatAverageDuration(generation) {

@@ -475,15 +475,16 @@
 
       async function boot() {
         initPhoneInput();
+        state.eventId = readPathEventId();
         state.initialPhone = readInitialPhone();
         if (state.initialPhone) {
           setPhoneValue(state.initialPhone);
         }
 
-        const configResponse = await fetch('/api/photobooth/manager/config');
+        const configResponse = await fetch(getSearchConfigUrl());
         const config = await configResponse.json();
 
-        state.eventId = config.eventId;
+        state.eventId = config.eventId || state.eventId;
         document.getElementById('event-label').textContent = config.firestoreRoot;
 
         if (!config.firebaseConfig || !config.firebaseConfig.apiKey) {
@@ -566,7 +567,7 @@
 
         try {
           const token = await state.auth.currentUser.getIdToken();
-          const response = await fetch(`/api/photobooth/search/phone?phone=${encodeURIComponent(phone)}`, {
+          const response = await fetch(`${getSearchApiBase()}/phone?phone=${encodeURIComponent(phone)}`, {
             headers: {
               Authorization: `Bearer ${token}`,
             },
@@ -732,7 +733,7 @@
         button.textContent = 'Enviando...';
 
         try {
-          await apiPost('/api/photobooth/search/prints', { imageId, type });
+          await apiPost(`${getSearchApiBase()}/prints`, { imageId, type });
           button.textContent = 'Enviado';
           setTimeout(() => {
             button.disabled = false;
@@ -784,7 +785,7 @@
         clearResults();
 
         if (window.history && window.history.replaceState) {
-          window.history.replaceState({}, '', '/search/');
+          window.history.replaceState({}, '', state.eventId ? `/search/${encodeURIComponent(state.eventId)}` : '/search/');
         }
 
         phoneInput.focus();
@@ -1001,13 +1002,33 @@
         const params = new URLSearchParams(window.location.search);
         const fromQuery = params.get('phone') || '';
 
-        if (fromQuery) {
-          return fromQuery;
-        }
+        return fromQuery;
+      }
 
-        const match = window.location.pathname.match(/^\/search\/(.+)$/);
+      function readPathEventId() {
+        const match = window.location.pathname.match(/^\/search\/([^/?#]+)\/?$/);
 
-        return match ? decodeURIComponent(match[1]) : '';
+        return match ? normalizeEventId(decodeURIComponent(match[1])) : '';
+      }
+
+      function getSearchConfigUrl() {
+        return state.eventId
+          ? `/api/photobooth/search/config/${encodeURIComponent(state.eventId)}`
+          : '/api/photobooth/search/config';
+      }
+
+      function getSearchApiBase() {
+        return state.eventId
+          ? `/api/photobooth/search/${encodeURIComponent(state.eventId)}`
+          : '/api/photobooth/search';
+      }
+
+      function normalizeEventId(value) {
+        return String(value || '')
+          .trim()
+          .replace(/[^a-zA-Z0-9_-]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .slice(0, 120);
       }
     </script>
   </body>

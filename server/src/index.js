@@ -29,6 +29,10 @@ const {
   saveMainCompositionConfig,
 } = require('./services/generatedImages');
 const {
+  SUPPORTED_LANGUAGES,
+  normalizeLanguage,
+} = require('./services/eventMessages');
+const {
   Timestamp,
   cleanEventId,
   getDb,
@@ -50,11 +54,18 @@ const {
   resendStickerOutput,
 } = require('./services/whatsappPhotobooth');
 const {
+  clearPrintQueue,
   markPrintDocumentStatus,
 } = require('./services/printQueue');
 const {
   createPhoneProfileId,
 } = require('./services/phone');
+const {
+  getTwilioDefaultConfigPublic,
+  getTwilioEventConfigPublic,
+  normalizeTwilioEventConfig,
+  runWithTwilioConfig,
+} = require('./services/twilioWhatsApp');
 
 const app = express();
 const publicDir = path.resolve(__dirname, '..', 'public');
@@ -134,10 +145,19 @@ app.get('/search/', (req, res) => {
   res.sendFile(path.join(publicDir, 'search.html'));
 });
 
-app.get('/search/:phone', (req, res) => {
+app.get('/search/:eventId', (req, res) => {
+  res.sendFile(path.join(publicDir, 'search.html'));
+});
+
+app.get('/search/:eventId/:phone', (req, res, next) => {
+  const eventId = cleanEventId(req.params.eventId, '');
   const phone = cleanString(req.params.phone, 80);
 
-  res.redirect(308, `/search/?phone=${encodeURIComponent(phone)}`);
+  if (!eventId) {
+    return next(clientError('missing_event_id', 'Informe o evento para busca.'));
+  }
+
+  res.redirect(308, `/search/${encodeURIComponent(eventId)}?phone=${encodeURIComponent(phone)}`);
 });
 
 app.get('/api/photobooth/manager/events', async (req, res, next) => {
@@ -150,7 +170,7 @@ app.get('/api/photobooth/manager/events', async (req, res, next) => {
       events.push(serializeEventDoc(doc.id, doc.data() || {}));
     });
 
-    events.sort((a, b) => timestampToMillis(b.updatedAt) - timestampToMillis(a.updatedAt));
+    events.sort(compareEventsByLabel);
 
     const defaultEventId = getEventId();
 
@@ -243,11 +263,14 @@ app.get('/api/photobooth/manager/config', async (req, res, next) => {
       let printLimitPerProfile = null;
       let printAutomation = null;
       let mainComposition = null;
+      let eventData = {};
 
       if (isFirebaseConfigured()) {
         printLimitPerProfile = await ensureEventPrintLimit();
         printAutomation = await ensureEventPrintAutomationConfig();
         mainComposition = await getMainCompositionConfig();
+        const eventSnap = await getEventRef().get();
+        eventData = eventSnap.exists ? eventSnap.data() || {} : {};
       }
 
       res.json({
@@ -257,6 +280,11 @@ app.get('/api/photobooth/manager/config', async (req, res, next) => {
         printLimitPerProfile,
         printAutomation,
         mainComposition,
+        language: normalizeLanguage(eventData.language),
+        supportedLanguages: SUPPORTED_LANGUAGES,
+        twilio: getTwilioEventConfigPublic(eventData.twilio || {}),
+        twilioDefaults: getTwilioDefaultConfigPublic(),
+        whatsappWebhookUrl: buildWhatsappWebhookUrl(req, getEventId()),
         firebaseConfig: getFirebasePublicConfig(),
       });
     });
@@ -266,78 +294,181 @@ app.get('/api/photobooth/manager/config', async (req, res, next) => {
   }
 });
 
-app.get('/api/photobooth/search/phone', async (req, res, next) => {
-  try {
-    await verifyFirebaseIdToken(req);
-    const phone = cleanString(req.query && req.query.phone, 80);
-
-    if (!phone) {
-      throw clientError('missing_phone', 'Informe o telefone para busca.');
-    }
-
-    const profile = await findProfileByPhone(phone);
-
-    if (!profile) {
-      res.json({
-        ok: true,
-        found: false,
-        profile: null,
-        images: [],
-      });
-      return;
-    }
-
-    const imagesSnap = await getEventRef()
-      .collection('images')
-      .where('profileId', '==', profile.id)
-      .get();
-    const images = [];
-
-    imagesSnap.forEach((doc) => {
-      images.push({
-        id: doc.id,
-        data: doc.data() || {},
-      });
-    });
-
-    images.sort((a, b) => timestampToMillis(b.data.createdAt) - timestampToMillis(a.data.createdAt));
-
-    res.json({
-      ok: true,
-      found: true,
-      profile,
-      images: images.slice(0, 100),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post('/api/photobooth/search/prints', async (req, res, next) => {
+app.post('/api/photobooth/manager/event-config', async (req, res, next) => {
   try {
     const user = await verifyFirebaseIdToken(req);
-    const imageId = cleanString(req.body && req.body.imageId, 160);
-    const type = cleanString(req.body && req.body.type, 20) || 'stickers';
 
-    if (!imageId) {
-      throw clientError('missing_image_id', 'Informe a imagem para impressao.');
-    }
+    await runWithRequestEvent(req, async () => {
+      const eventRef = getEventRef();
+      const snap = await eventRef.get();
+      const current = snap.exists ? snap.data() || {} : {};
+      const now = Timestamp.now();
+      const payload = {
+        eventId: getEventId(),
+        updatedAt: now,
+        updatedBy: user.email || user.uid,
+      };
 
-    const result = await createPrintRequest({
-      imageId,
-      type,
-      participant: {
-        id: user.uid,
-      },
-      source: 'search',
-      requestedBy: user.email || user.uid,
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'printLimitPerProfile')) {
+        payload.printLimitPerProfile = readInteger(
+          req.body.printLimitPerProfile,
+          current.printLimitPerProfile ?? 0,
+          0,
+          1000,
+        );
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'language')) {
+        payload.language = normalizeLanguage(req.body.language);
+      }
+
+      if (req.body && req.body.printAutomation) {
+        payload.autoPrintMainOnReady = req.body.printAutomation.autoPrintMainOnReady === true;
+        payload.autoPrintStickerSheetOnReady = req.body.printAutomation.autoPrintStickerSheetOnReady === true;
+      }
+
+      if (req.body && req.body.twilio) {
+        payload.twilio = buildTwilioConfigForStorage(req.body.twilio, current.twilio || {}, {
+          updatedAt: now,
+          updatedBy: user.email || user.uid,
+        });
+      }
+
+      await eventRef.set(payload, { merge: true });
+
+      const updatedSnap = await eventRef.get();
+      const updatedData = updatedSnap.exists ? updatedSnap.data() || {} : {};
+
+      res.json({
+        ok: true,
+        eventId: getEventId(),
+        firestoreRoot: `/events/${getEventId()}`,
+        storageRoot: getStorageRoot(),
+        printLimitPerProfile: updatedData.printLimitPerProfile ?? null,
+        printAutomation: serializePrintAutomation(updatedData),
+        mainComposition: updatedData.mainComposition || null,
+        language: normalizeLanguage(updatedData.language),
+        supportedLanguages: SUPPORTED_LANGUAGES,
+        twilio: getTwilioEventConfigPublic(updatedData.twilio || {}),
+        twilioDefaults: getTwilioDefaultConfigPublic(),
+        whatsappWebhookUrl: buildWhatsappWebhookUrl(req, getEventId()),
+        firebaseConfig: getFirebasePublicConfig(),
+      });
     });
-
-    res.json(result);
   } catch (error) {
     next(error);
   }
 });
+
+app.get('/api/photobooth/search/config', handleSearchConfig);
+app.get('/api/photobooth/search/config/:eventId', (req, res, next) => (
+  runWithRouteEvent(req, next, () => handleSearchConfig(req, res, next))
+));
+
+app.get('/api/photobooth/search/phone', handleSearchPhone);
+app.get('/api/photobooth/search/:eventId/phone', (req, res, next) => (
+  runWithRouteEvent(req, next, () => handleSearchPhone(req, res, next))
+));
+
+app.post('/api/photobooth/search/prints', handleSearchPrintRequest);
+app.post('/api/photobooth/search/:eventId/prints', (req, res, next) => (
+  runWithRouteEvent(req, next, () => handleSearchPrintRequest(req, res, next))
+));
+
+async function handleSearchConfig(req, res, next) {
+  try {
+    await runWithRequestEvent(req, async () => {
+      res.json({
+        ok: true,
+        eventId: getEventId(),
+        firestoreRoot: `/events/${getEventId()}`,
+        firebaseConfig: getFirebasePublicConfig(),
+      });
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function handleSearchPhone(req, res, next) {
+  try {
+    await verifyFirebaseIdToken(req);
+
+    await runWithRequestEvent(req, async () => {
+      const phone = cleanString(req.query && req.query.phone, 80);
+
+      if (!phone) {
+        throw clientError('missing_phone', 'Informe o telefone para busca.');
+      }
+
+      const profile = await findProfileByPhone(phone);
+
+      if (!profile) {
+        res.json({
+          ok: true,
+          found: false,
+          profile: null,
+          images: [],
+        });
+        return;
+      }
+
+      const imagesSnap = await getEventRef()
+        .collection('images')
+        .where('profileId', '==', profile.id)
+        .get();
+      const images = [];
+
+      imagesSnap.forEach((doc) => {
+        images.push({
+          id: doc.id,
+          data: doc.data() || {},
+        });
+      });
+
+      images.sort((a, b) => timestampToMillis(b.data.createdAt) - timestampToMillis(a.data.createdAt));
+
+      res.json({
+        ok: true,
+        eventId: getEventId(),
+        found: true,
+        profile,
+        images: images.slice(0, 100),
+      });
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function handleSearchPrintRequest(req, res, next) {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+
+    await runWithRequestEvent(req, async () => {
+      const imageId = cleanString(req.body && req.body.imageId, 160);
+      const type = cleanString(req.body && req.body.type, 20) || 'stickers';
+
+      if (!imageId) {
+        throw clientError('missing_image_id', 'Informe a imagem para impressao.');
+      }
+
+      const result = await createPrintRequest({
+        imageId,
+        type,
+        participant: {
+          id: user.uid,
+        },
+        source: 'search',
+        requestedBy: user.email || user.uid,
+      });
+
+      res.json(result);
+    });
+  } catch (error) {
+    next(error);
+  }
+}
 
 app.post('/api/photobooth/manager/prints', async (req, res, next) => {
   try {
@@ -369,6 +500,23 @@ app.post('/api/photobooth/manager/main-composition', async (req, res, next) => {
   try {
     const user = await verifyFirebaseIdToken(req);
     res.json(await saveMainCompositionConfig(req.body, user.email || user.uid));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/photobooth/manager/prints/clear', async (req, res, next) => {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+    const type = cleanString(req.body && req.body.type, 20);
+
+    if (!['main', 'stickers'].includes(type)) {
+      throw clientError('invalid_print_type', 'Informe o tipo de impressao para limpar.');
+    }
+
+    const result = await clearPrintQueue(type, user.email || user.uid);
+
+    res.json(result);
   } catch (error) {
     next(error);
   }
@@ -508,6 +656,23 @@ app.post('/api/photobooth/manager/prints/:printId/status', async (req, res, next
 
 app.post('/api/photobooth/whatsapp', handleWhatsAppWebhook);
 app.post('/api/photobooth/whatsapp/webhook', handleWhatsAppWebhook);
+app.post('/api/photobooth/whatsapp/:eventId', async (req, res, next) => {
+  const eventId = cleanEventId(req.params.eventId, '');
+
+  if (!eventId) {
+    return next(clientError('missing_event_id', 'Informe o evento no webhook.'));
+  }
+
+  try {
+    await runWithEventId(eventId, async () => {
+      const twilioConfig = await loadCurrentEventTwilioConfig();
+
+      await runWithTwilioConfig(twilioConfig, () => handleWhatsAppWebhook(req, res));
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.get('/api/photobooth/image-prompts', async (req, res, next) => {
   try {
@@ -764,6 +929,69 @@ function runWithRequestEvent(req, task) {
   return runWithEventId(getRequestEventId(req) || getEventId(), task);
 }
 
+function runWithRouteEvent(req, next, task) {
+  const eventId = cleanEventId(req.params && req.params.eventId, '');
+
+  if (!eventId) {
+    return next(clientError('missing_event_id', 'Informe o evento.'));
+  }
+
+  return runWithEventId(eventId, task).catch(next);
+}
+
+async function loadCurrentEventTwilioConfig() {
+  if (!isFirebaseConfigured()) {
+    return {};
+  }
+
+  const snap = await getEventRef().get();
+  const data = snap.exists ? snap.data() || {} : {};
+
+  return data.twilio || {};
+}
+
+function buildTwilioConfigForStorage(input = {}, existing = {}, metadata = {}) {
+  const mode = input.mode === 'custom' ? 'custom' : 'default';
+
+  if (mode !== 'custom') {
+    return {
+      mode: 'default',
+      accountSid: '',
+      authToken: '',
+      messagingServiceSid: '',
+      whatsAppFrom: '',
+      ...metadata,
+    };
+  }
+
+  const normalizedExisting = normalizeTwilioEventConfig(existing);
+  const authToken = cleanString(input.authToken, 240) || normalizedExisting.authToken || '';
+
+  return {
+    mode: 'custom',
+    accountSid: cleanString(input.accountSid, 120),
+    authToken,
+    messagingServiceSid: cleanString(input.messagingServiceSid, 120),
+    whatsAppFrom: cleanString(input.whatsAppFrom, 80),
+    ...metadata,
+  };
+}
+
+function buildWhatsappWebhookUrl(req, eventId) {
+  const configuredBase = cleanString(process.env.PUBLIC_BASE_URL || process.env.WEBHOOK_BASE_URL, 240);
+  const baseUrl = configuredBase
+    ? configuredBase.replace(/\/+$/g, '')
+    : `${getRequestProtocol(req)}://${req.get('host')}`;
+
+  return `${baseUrl}/api/photobooth/whatsapp/${encodeURIComponent(eventId)}`;
+}
+
+function getRequestProtocol(req) {
+  const forwarded = cleanString(req.get('x-forwarded-proto'), 40).split(',')[0].trim();
+
+  return forwarded || req.protocol || 'http';
+}
+
 function serializeEventDoc(id, data = {}) {
   const eventId = cleanEventId(data.eventId || id, id);
 
@@ -773,11 +1001,29 @@ function serializeEventDoc(id, data = {}) {
     name: data.name || '',
     firestoreRoot: `/events/${eventId}`,
     printLimitPerProfile: data.printLimitPerProfile,
-    printAutomation: data.printAutomation || null,
+    printAutomation: serializePrintAutomation(data),
     stats: data.stats || {},
+    language: normalizeLanguage(data.language),
     createdAt: data.createdAt || null,
     updatedAt: data.updatedAt || null,
   };
+}
+
+function serializePrintAutomation(data = {}) {
+  return {
+    autoPrintMainOnReady: data.autoPrintMainOnReady === true,
+    autoPrintStickerSheetOnReady: data.autoPrintStickerSheetOnReady === true,
+  };
+}
+
+function compareEventsByLabel(a, b) {
+  const labelA = String(a.name || a.id || a.eventId || '').toLowerCase();
+  const labelB = String(b.name || b.id || b.eventId || '').toLowerCase();
+
+  return labelA.localeCompare(labelB, 'pt-BR', {
+    numeric: true,
+    sensitivity: 'base',
+  });
 }
 
 function timestampToMillis(value) {
@@ -798,6 +1044,16 @@ function timestampToMillis(value) {
   }
 
   return 0;
+}
+
+function readInteger(value, fallback, min, max) {
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, parsed));
 }
 
 function clientError(code, publicMessage, statusCode = 400) {
