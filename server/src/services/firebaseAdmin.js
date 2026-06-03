@@ -1,4 +1,5 @@
 const path = require('node:path');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const admin = require('firebase-admin');
 const { loadEnv } = require('./env');
 
@@ -6,11 +7,15 @@ loadEnv();
 
 const DEFAULT_EVENT_ID = 'photobooth-event';
 const SIGNED_URL_EXPIRES = process.env.SIGNED_URL_EXPIRES || '03-09-2491';
+const eventContext = new AsyncLocalStorage();
 
 let initialized = false;
 
 function getEventId() {
-  return cleanId(process.env.PHOTOBOOTH_EVENT_ID || DEFAULT_EVENT_ID);
+  const context = eventContext.getStore();
+  const scopedEventId = context && context.eventId ? context.eventId : '';
+
+  return cleanId(scopedEventId || process.env.PHOTOBOOTH_EVENT_ID || DEFAULT_EVENT_ID);
 }
 
 function getStorageRoot() {
@@ -59,6 +64,12 @@ function getBucket() {
 
 function getEventRef() {
   return getDb().collection('events').doc(getEventId());
+}
+
+function runWithEventId(eventId, task) {
+  const scopedEventId = cleanEventId(eventId, process.env.PHOTOBOOTH_EVENT_ID || DEFAULT_EVENT_ID);
+
+  return eventContext.run({ eventId: scopedEventId }, task);
 }
 
 async function uploadBufferToStorage({
@@ -174,11 +185,15 @@ function cleanStoragePath(value) {
     .replace(/\/{2,}/g, '/');
 }
 
-function cleanId(value) {
-  return String(value || DEFAULT_EVENT_ID)
+function cleanEventId(value, fallback = DEFAULT_EVENT_ID) {
+  return cleanId(value, fallback);
+}
+
+function cleanId(value, fallback = DEFAULT_EVENT_ID) {
+  return String(value || fallback)
     .trim()
     .replace(/[^a-zA-Z0-9_-]+/g, '-')
-    .replace(/^-+|-+$/g, '') || DEFAULT_EVENT_ID;
+    .replace(/^-+|-+$/g, '') || fallback;
 }
 
 function inferContentType(filePath) {
@@ -222,6 +237,7 @@ function clientError(code, publicMessage, statusCode = 400) {
 module.exports = {
   FieldValue: admin.firestore.FieldValue,
   Timestamp: admin.firestore.Timestamp,
+  cleanEventId,
   downloadStorageFile,
   getBucket,
   getDb,
@@ -232,6 +248,7 @@ module.exports = {
   initializeFirebaseAdmin,
   isFirebaseConfigured,
   joinStoragePath,
+  runWithEventId,
   uploadBufferToStorage,
   uploadFileToStorage,
   verifyFirebaseIdToken,

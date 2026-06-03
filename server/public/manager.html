@@ -201,6 +201,47 @@
         color: var(--muted);
       }
 
+      .event-switcher {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(260px, 0.5fr) minmax(280px, 0.65fr);
+        gap: 12px;
+        align-items: end;
+        margin-bottom: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        background: var(--panel);
+      }
+
+      .event-summary {
+        display: grid;
+        gap: 4px;
+      }
+
+      .event-summary strong {
+        font-size: 18px;
+      }
+
+      .event-controls,
+      .event-create {
+        display: grid;
+        gap: 8px;
+      }
+
+      .event-select-row,
+      .event-create-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+      }
+
+      .event-message {
+        grid-column: 1 / -1;
+        min-height: 18px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
       .status-filter {
         display: grid;
         gap: 6px;
@@ -1015,6 +1056,10 @@
           grid-template-columns: 1fr 1fr;
         }
 
+        .event-switcher {
+          grid-template-columns: 1fr;
+        }
+
         .participant-stat {
           text-align: left;
         }
@@ -1064,6 +1109,33 @@
 
     <main class="hidden" id="manager-panel">
       <section>
+        <div class="event-switcher">
+          <div class="event-summary">
+            <span class="muted">Evento Firestore</span>
+            <strong id="event-current">-</strong>
+            <small class="muted" id="event-current-root">/events/-</small>
+          </div>
+          <div class="event-controls">
+            <label for="event-select">Selecionar evento</label>
+            <div class="event-select-row">
+              <select id="event-select"></select>
+              <button class="secondary icon-button" id="event-refresh" type="button" aria-label="Atualizar eventos" title="Atualizar eventos">
+                <i data-lucide="refresh-cw"></i>
+              </button>
+            </div>
+          </div>
+          <form class="event-create" id="event-create-form">
+            <label for="event-create-id">Criar ou abrir evento</label>
+            <div class="event-create-row">
+              <input id="event-create-id" type="text" placeholder="evento-2026" autocomplete="off" />
+              <button class="success icon-button" id="event-create-button" type="submit" aria-label="Criar evento" title="Criar evento">
+                <i data-lucide="plus"></i>
+              </button>
+            </div>
+          </form>
+          <p class="event-message" id="event-message"></p>
+        </div>
+
         <div class="metrics">
           <div class="metric">
             <span class="muted">Fotos geradas</span>
@@ -1311,9 +1383,12 @@
       const MAIN_PRINT_HEIGHT = 1772;
       const MIN_SUBJECT_SIZE = 100;
       const SUBJECT_ASPECT_RATIO = 2 / 3;
+      const SELECTED_EVENT_STORAGE_KEY = 'ai-photobooth.manager.eventId';
 
       const state = {
         eventId: '',
+        preferredEventId: '',
+        eventRows: [],
         db: null,
         auth: null,
         eventUnsubscribe: null,
@@ -1383,6 +1458,14 @@
       const printStickersPreview = document.getElementById('print-stickers-preview');
       const printMainOption = document.getElementById('print-main-option');
       const printStickersOption = document.getElementById('print-stickers-option');
+      const eventCurrent = document.getElementById('event-current');
+      const eventCurrentRoot = document.getElementById('event-current-root');
+      const eventSelect = document.getElementById('event-select');
+      const eventRefresh = document.getElementById('event-refresh');
+      const eventCreateForm = document.getElementById('event-create-form');
+      const eventCreateId = document.getElementById('event-create-id');
+      const eventCreateButton = document.getElementById('event-create-button');
+      const eventMessage = document.getElementById('event-message');
       const compositionModal = document.getElementById('composition-modal');
       const compositionTitle = document.getElementById('composition-title');
       const compositionSubtitle = document.getElementById('composition-subtitle');
@@ -1408,15 +1491,10 @@
       boot();
 
       async function boot() {
-        const configResponse = await fetch('/api/photobooth/manager/config');
-        const config = await configResponse.json();
+        state.preferredEventId = normalizeEventId(localStorage.getItem(SELECTED_EVENT_STORAGE_KEY) || '');
+        const config = await fetchManagerConfig('');
 
-        state.eventId = config.eventId;
-        applyMainCompositionConfig(config.mainComposition);
-        document.getElementById('event-label').textContent = config.firestoreRoot;
-        if (config.printLimitPerProfile !== null && config.printLimitPerProfile !== undefined) {
-          metricPrintLimit.textContent = formatNumber(config.printLimitPerProfile);
-        }
+        applyManagerConfig(config);
 
         if (!config.firebaseConfig || !config.firebaseConfig.apiKey) {
           authMessage.textContent = 'Firebase publico nao configurado no ambiente.';
@@ -1429,6 +1507,9 @@
 
         document.getElementById('login-button').addEventListener('click', login);
         logoutButton.addEventListener('click', () => state.auth.signOut());
+        eventSelect.addEventListener('change', () => switchManagerEvent(eventSelect.value));
+        eventRefresh.addEventListener('click', loadAvailableEvents);
+        eventCreateForm.addEventListener('submit', createManagerEvent);
         printStatusFilter.addEventListener('change', () => {
           state.printStatusFilter = printStatusFilter.value;
           renderPrintLists();
@@ -1513,15 +1594,18 @@
         });
         refreshIcons();
 
-        state.auth.onAuthStateChanged((user) => {
+        state.auth.onAuthStateChanged(async (user) => {
           if (user) {
             authPanel.classList.add('hidden');
             managerPanel.classList.remove('hidden');
             logoutButton.classList.remove('hidden');
-            listenEventStats();
-            listenProfiles();
-            listenImages();
-            listenPrints();
+            await loadAvailableEvents();
+
+            if (state.preferredEventId && state.preferredEventId !== state.eventId) {
+              await switchManagerEvent(state.preferredEventId);
+            } else {
+              startEventListeners();
+            }
           } else {
             authPanel.classList.remove('hidden');
             managerPanel.classList.add('hidden');
@@ -1542,6 +1626,174 @@
         } catch (error) {
           authMessage.textContent = error.message;
         }
+      }
+
+      async function fetchManagerConfig(eventId) {
+        const params = eventId ? `?eventId=${encodeURIComponent(eventId)}` : '';
+        const headers = {};
+
+        if (state.auth && state.auth.currentUser) {
+          headers.Authorization = `Bearer ${await state.auth.currentUser.getIdToken()}`;
+        }
+
+        const response = await fetch(`/api/photobooth/manager/config${params}`, { headers });
+        const payload = await response.json().catch(() => ({ message: response.statusText }));
+
+        if (!response.ok) {
+          throw new Error(payload.message || 'Falha ao carregar configuracao do manager.');
+        }
+
+        return payload;
+      }
+
+      function applyManagerConfig(config) {
+        state.eventId = config.eventId || state.eventId;
+        state.preferredEventId = state.eventId;
+        localStorage.setItem(SELECTED_EVENT_STORAGE_KEY, state.eventId);
+        applyMainCompositionConfig(config.mainComposition);
+        document.getElementById('event-label').textContent = config.firestoreRoot || `/events/${state.eventId}`;
+        eventCurrentRoot.textContent = config.firestoreRoot || `/events/${state.eventId}`;
+        eventCurrent.textContent = getEventDisplayName(state.eventId);
+        eventCreateId.value = '';
+        renderEventOptions();
+
+        if (config.printLimitPerProfile !== null && config.printLimitPerProfile !== undefined) {
+          metricPrintLimit.textContent = formatNumber(config.printLimitPerProfile);
+        }
+      }
+
+      async function loadAvailableEvents() {
+        if (!state.auth || !state.auth.currentUser) {
+          return;
+        }
+
+        eventMessage.textContent = 'Carregando eventos.';
+
+        try {
+          const payload = await apiGet('/api/photobooth/manager/events', { withEvent: false });
+          state.eventRows = payload.events || [];
+          renderEventOptions();
+          eventMessage.textContent = '';
+        } catch (error) {
+          eventMessage.textContent = error.message || 'Falha ao carregar eventos.';
+        }
+      }
+
+      function renderEventOptions() {
+        const rows = [...state.eventRows];
+
+        if (state.eventId && !rows.some((event) => event.id === state.eventId)) {
+          rows.unshift({
+            id: state.eventId,
+            eventId: state.eventId,
+            name: '',
+            firestoreRoot: `/events/${state.eventId}`,
+          });
+        }
+
+        eventSelect.innerHTML = rows
+          .map((event) => {
+            const id = event.id || event.eventId;
+            const label = event.name ? `${event.name} (${id})` : id;
+
+            return `<option value="${escapeAttr(id)}">${escapeHtml(label)}</option>`;
+          })
+          .join('');
+        eventSelect.value = state.eventId;
+        eventCurrent.textContent = getEventDisplayName(state.eventId);
+      }
+
+      function getEventDisplayName(eventId) {
+        const event = state.eventRows.find((item) => item.id === eventId || item.eventId === eventId);
+
+        if (event && event.name) {
+          return `${event.name} (${eventId})`;
+        }
+
+        return eventId || '-';
+      }
+
+      async function switchManagerEvent(eventId) {
+        const nextEventId = normalizeEventId(eventId);
+
+        if (!nextEventId || nextEventId === state.eventId) {
+          eventSelect.value = state.eventId;
+          return;
+        }
+
+        eventMessage.textContent = 'Trocando evento.';
+        stopListeners();
+        resetEventScopedUi();
+
+        try {
+          const config = await fetchManagerConfig(nextEventId);
+          applyManagerConfig(config);
+
+          if (state.auth && state.auth.currentUser) {
+            await loadAvailableEvents();
+            startEventListeners();
+          }
+
+          eventMessage.textContent = 'Evento ativo.';
+          setTimeout(() => {
+            if (eventMessage.textContent === 'Evento ativo.') {
+              eventMessage.textContent = '';
+            }
+          }, 1500);
+        } catch (error) {
+          eventMessage.textContent = error.message || 'Falha ao trocar evento.';
+          eventSelect.value = state.eventId;
+          startEventListeners();
+        }
+      }
+
+      async function createManagerEvent(event) {
+        event.preventDefault();
+
+        const eventId = normalizeEventId(eventCreateId.value);
+
+        if (!eventId) {
+          eventMessage.textContent = 'Informe um identificador para o evento.';
+          return;
+        }
+
+        eventCreateButton.disabled = true;
+        eventMessage.textContent = 'Criando evento.';
+
+        try {
+          const payload = await apiPost('/api/photobooth/manager/events', { eventId }, { withEvent: false });
+          const nextEventId = payload.event?.id || payload.event?.eventId || eventId;
+          await loadAvailableEvents();
+          await switchManagerEvent(nextEventId);
+        } catch (error) {
+          eventMessage.textContent = error.message || 'Falha ao criar evento.';
+        } finally {
+          eventCreateButton.disabled = false;
+        }
+      }
+
+      function startEventListeners() {
+        listenEventStats();
+        listenProfiles();
+        listenImages();
+        listenPrints();
+      }
+
+      function resetEventScopedUi() {
+        state.selectedProfile = null;
+        state.printRows = [];
+        profilesCount.textContent = '0 participante(s)';
+        imagesCount.textContent = '0 imagem(ns)';
+        mainPrintCount.textContent = '0/0 item(ns)';
+        stickerPrintCount.textContent = '0/0 item(ns)';
+        metricPhotosGenerated.textContent = '0';
+        metricMainPrinted.textContent = '0';
+        metricStickersPrinted.textContent = '0';
+        metricGenerationAverage.textContent = '0s';
+        profilesEl.innerHTML = '<div class="empty">Carregando participantes.</div>';
+        imagesEl.innerHTML = '<div class="empty">Carregando imagens.</div>';
+        mainPrintsEl.innerHTML = '<div class="empty">Carregando fila.</div>';
+        stickerPrintsEl.innerHTML = '<div class="empty">Carregando fila.</div>';
       }
 
       function setActiveTab(tab) {
@@ -2520,15 +2772,42 @@
         }
       }
 
-      async function apiPost(url, body) {
+      async function apiGet(url, options = {}) {
         const token = await state.auth.currentUser.getIdToken();
+        const headers = {
+          Authorization: `Bearer ${token}`,
+        };
+
+        if (options.withEvent !== false && state.eventId) {
+          headers['X-Photobooth-Event-Id'] = state.eventId;
+        }
+
+        const response = await fetch(url, { headers });
+        const payload = await response.json().catch(() => ({ message: response.statusText }));
+
+        if (!response.ok) {
+          alert(payload.message || 'Falha ao executar acao.');
+          throw new Error(payload.message || 'Falha ao executar acao.');
+        }
+
+        return payload;
+      }
+
+      async function apiPost(url, body, options = {}) {
+        const token = await state.auth.currentUser.getIdToken();
+        const headers = {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        };
+
+        if (options.withEvent !== false && state.eventId) {
+          headers['X-Photobooth-Event-Id'] = state.eventId;
+        }
+
         const response = await fetch(url, {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(body),
+          headers,
+          body: JSON.stringify(body || {}),
         });
         const payload = await response.json().catch(() => ({ message: response.statusText }));
 
@@ -2612,6 +2891,14 @@
 
       function clamp(value, min, max) {
         return Math.min(max, Math.max(min, value));
+      }
+
+      function normalizeEventId(value) {
+        return String(value || '')
+          .trim()
+          .replace(/[^a-zA-Z0-9_-]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .slice(0, 120);
       }
 
       function stopListeners() {

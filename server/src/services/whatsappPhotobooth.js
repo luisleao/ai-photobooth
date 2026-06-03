@@ -60,6 +60,17 @@ async function handleWhatsAppWebhook(req, res) {
 
     const profile = await upsertProfile(messageData);
 
+    if (!hasImageMedia(messageData) && isStickerResendKeyword(messageData)) {
+      twiml.message('Vou reenviar os stickers que encontrei para este número.');
+      sendTwiml(res, twiml);
+
+      runInBackground(() => resendGeneratedStickersForProfile({
+        profile,
+        requestedBy: 'whatsapp-keyword',
+      }));
+      return undefined;
+    }
+
     if (hasImageMedia(messageData)) {
       const imageId = getInboundImageId(messageData);
 
@@ -110,7 +121,7 @@ async function handleWhatsAppWebhook(req, res) {
         accepted: true,
       });
 
-      twiml.message('Aguarde uns minutos, daqui a pouco te responderemos por aqui com a sua foto.');
+      twiml.message('Aguarde uns minutos, daqui a pouco te responderemos por aqui com a sua foto e seus stickers.');
       sendTwiml(res, twiml);
 
       runInBackground(() => downloadStoreAndGenerate({
@@ -121,7 +132,7 @@ async function handleWhatsAppWebhook(req, res) {
       return undefined;
     }
 
-    twiml.message('Envie uma foto por aqui para gerar sua figurinha da Copa e o pacote de stickers.');
+    twiml.message('Envie uma foto por aqui para gerar seu cartão e o pacote de stickers temáticos.');
     return sendTwiml(res, twiml);
   } catch (error) {
     console.error('[whatsapp] webhook failed', error);
@@ -472,8 +483,7 @@ async function resendStickerOutput({
     throw clientError('sticker_not_found', 'Sticker nao encontrado para reenvio.');
   }
 
-  const file = output.files.find((item) => item.type === 'webp' && item.signedUrl)
-    || output.files.find((item) => item.signedUrl);
+  const file = getStickerDeliveryFile(output);
 
   if (!file || !file.signedUrl) {
     throw clientError('sticker_file_not_found', 'Arquivo do sticker nao encontrado para reenvio.');
@@ -502,6 +512,156 @@ async function resendStickerOutput({
     imageId,
     outputId,
     messageSid: message.sid || '',
+  };
+}
+
+async function resendGeneratedStickersForProfile({
+  profile,
+  requestedBy,
+}) {
+  const destination = profile && profile.whatsAppAddress
+    ? toWhatsAppAddress(profile.whatsAppAddress)
+    : '';
+
+  if (!profile || !profile.id || !destination) {
+    console.warn('[whatsapp] sticker resend ignored: missing profile destination');
+    return {
+      ok: false,
+      sent: 0,
+      failed: 0,
+      total: 0,
+    };
+  }
+
+  const imagesSnap = await getEventRef()
+    .collection('images')
+    .where('profileId', '==', profile.id)
+    .get();
+  const images = [];
+
+  imagesSnap.forEach((doc) => {
+    images.push({
+      ref: doc.ref,
+      id: doc.id,
+      data: doc.data() || {},
+    });
+  });
+
+  images.sort((a, b) => timestampToMillis(a.data.createdAt) - timestampToMillis(b.data.createdAt));
+
+  const stickers = images.flatMap((image) => {
+    const outputs = image.data.outputs || {};
+
+    return Object.entries(outputs)
+      .map(([outputId, output]) => ({
+        imageRef: image.ref,
+        imageId: image.id,
+        outputId,
+        output,
+        file: getStickerDeliveryFile(output),
+      }))
+      .filter((item) => (
+        item.output
+        && item.output.kind === 'sticker'
+        && item.file
+        && item.file.signedUrl
+      ));
+  });
+
+  const requestTimestamp = Timestamp.now();
+
+  await getProfileRef(profile.id).set({
+    lastStickerResendRequest: {
+      keyword: 'STICKERS',
+      requestedBy: requestedBy || '',
+      requestedAt: requestTimestamp,
+      found: stickers.length,
+    },
+    updatedAt: requestTimestamp,
+  }, { merge: true });
+
+  if (!stickers.length) {
+    await sendWhatsAppText(
+      destination,
+      'Ainda nao encontrei stickers prontos para este numero. Envie uma foto primeiro ou aguarde a geracao terminar.',
+    );
+
+    return {
+      ok: true,
+      sent: 0,
+      failed: 0,
+      total: 0,
+    };
+  }
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const item of stickers) {
+    try {
+      const message = await sendWhatsAppMedia(destination, {
+        mediaUrl: item.file.signedUrl,
+      });
+      sent += 1;
+
+      await item.imageRef.set({
+        updatedAt: Timestamp.now(),
+        resends: {
+          [item.outputId]: {
+            status: 'sent',
+            requestedBy: requestedBy || '',
+            keyword: 'STICKERS',
+            messageSid: message.sid || '',
+            fileType: item.file.type || '',
+            sentAt: Timestamp.now(),
+          },
+        },
+      }, { merge: true });
+    } catch (error) {
+      failed += 1;
+      console.error(`[whatsapp] failed to resend sticker ${item.imageId}/${item.outputId}`, error);
+
+      await item.imageRef.set({
+        updatedAt: Timestamp.now(),
+        resends: {
+          [item.outputId]: {
+            status: 'failed',
+            requestedBy: requestedBy || '',
+            keyword: 'STICKERS',
+            fileType: item.file.type || '',
+            error: publicError(error),
+            errorDetails: detailedError(error),
+            failedAt: Timestamp.now(),
+          },
+        },
+      }, { merge: true });
+    }
+  }
+
+  const summary = failed > 0
+    ? `Reenviei ${sent} sticker(s), mas ${failed} nao puderam ser enviados agora.`
+    : `Reenviei ${sent} sticker(s) gerado(s) para este numero.`;
+
+  await sendWhatsAppText(destination, summary);
+
+  await getProfileRef(profile.id).set({
+    lastStickerResendRequest: {
+      keyword: 'STICKERS',
+      requestedBy: requestedBy || '',
+      requestedAt: requestTimestamp,
+      completedAt: Timestamp.now(),
+      found: stickers.length,
+      sent,
+      failed,
+    },
+    updatedAt: Timestamp.now(),
+  }, { merge: true });
+
+  return {
+    ok: failed === 0,
+    sent,
+    failed,
+    total: stickers.length,
   };
 }
 
@@ -1566,6 +1726,26 @@ function hasImageMedia(messageData = {}) {
   const type = String(messageData.MediaContentType0 || '').toLowerCase();
 
   return count > 0 && (type.startsWith('image/') || messageData.MessageType === 'image' || messageData.MediaUrl0);
+}
+
+function isStickerResendKeyword(messageData = {}) {
+  const body = String(messageData.Body || '')
+    .trim()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+
+  return body === 'STICKERS';
+}
+
+function getStickerDeliveryFile(output = {}) {
+  if (!output || !Array.isArray(output.files)) {
+    return null;
+  }
+
+  return output.files.find((item) => item && item.type === 'webp' && item.signedUrl)
+    || output.files.find((item) => item && item.signedUrl)
+    || null;
 }
 
 async function optimizeIncomingImage(buffer) {

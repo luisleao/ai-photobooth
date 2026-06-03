@@ -30,11 +30,14 @@ const {
 } = require('./services/generatedImages');
 const {
   Timestamp,
+  cleanEventId,
+  getDb,
   getEventId,
   getEventRef,
   getFirebasePublicConfig,
   getStorageRoot,
   isFirebaseConfigured,
+  runWithEventId,
   verifyFirebaseIdToken,
 } = require('./services/firebaseAdmin');
 const {
@@ -137,30 +140,130 @@ app.get('/search/:phone', (req, res) => {
   res.redirect(308, `/search/?phone=${encodeURIComponent(phone)}`);
 });
 
-app.get('/api/photobooth/manager/config', async (req, res) => {
-  let printLimitPerProfile = null;
-  let printAutomation = null;
-  let mainComposition = null;
+app.get('/api/photobooth/manager/events', async (req, res, next) => {
+  try {
+    await verifyFirebaseIdToken(req);
+    const eventsSnap = await getDb().collection('events').limit(200).get();
+    const events = [];
 
-  if (isFirebaseConfigured()) {
-    try {
-      printLimitPerProfile = await ensureEventPrintLimit();
-      printAutomation = await ensureEventPrintAutomationConfig();
-      mainComposition = await getMainCompositionConfig();
-    } catch (error) {
-      console.error('[manager] failed to ensure event config', error);
+    eventsSnap.forEach((doc) => {
+      events.push(serializeEventDoc(doc.id, doc.data() || {}));
+    });
+
+    events.sort((a, b) => timestampToMillis(b.updatedAt) - timestampToMillis(a.updatedAt));
+
+    const defaultEventId = getEventId();
+
+    if (!events.some((event) => event.id === defaultEventId)) {
+      events.unshift({
+        id: defaultEventId,
+        eventId: defaultEventId,
+        name: '',
+        firestoreRoot: `/events/${defaultEventId}`,
+        isDefault: true,
+      });
     }
+
+    res.json({
+      ok: true,
+      defaultEventId,
+      events,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/photobooth/manager/events', async (req, res, next) => {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+    const rawEventId = cleanString(req.body && (req.body.eventId || req.body.id), 120);
+    const eventId = cleanEventId(rawEventId, '');
+    const name = cleanString(req.body && req.body.name, 120);
+
+    if (!eventId) {
+      throw clientError('missing_event_id', 'Informe um identificador para o evento.');
+    }
+
+    const eventRef = getDb().collection('events').doc(eventId);
+    const snap = await eventRef.get();
+    const now = Timestamp.now();
+
+    await runWithEventId(eventId, async () => {
+      await eventRef.set({
+        ...(snap.exists ? {} : {
+          createdAt: now,
+          createdBy: user.email || user.uid,
+        }),
+        eventId,
+        ...(name ? { name } : {}),
+        updatedAt: now,
+        updatedBy: user.email || user.uid,
+      }, { merge: true });
+
+      await ensureEventPrintLimit();
+      await ensureEventPrintAutomationConfig();
+      await getMainCompositionConfig();
+    });
+
+    const updatedSnap = await eventRef.get();
+
+    res.status(snap.exists ? 200 : 201).json({
+      ok: true,
+      event: serializeEventDoc(eventId, updatedSnap.data() || {}),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.use('/api/photobooth/manager', (req, res, next) => {
+  if (req.path === '/config') {
+    return next();
   }
 
-  res.json({
-    eventId: getEventId(),
-    firestoreRoot: `/events/${getEventId()}`,
-    storageRoot: getStorageRoot(),
-    printLimitPerProfile,
-    printAutomation,
-    mainComposition,
-    firebaseConfig: getFirebasePublicConfig(),
-  });
+  const eventId = getRequestEventId(req);
+
+  if (!eventId) {
+    return next();
+  }
+
+  return runWithEventId(eventId, () => next());
+});
+
+app.get('/api/photobooth/manager/config', async (req, res, next) => {
+  try {
+    const requestedEventId = getRequestEventId(req);
+
+    if (requestedEventId && requestedEventId !== getEventId()) {
+      await verifyFirebaseIdToken(req);
+    }
+
+    await runWithRequestEvent(req, async () => {
+      let printLimitPerProfile = null;
+      let printAutomation = null;
+      let mainComposition = null;
+
+      if (isFirebaseConfigured()) {
+        printLimitPerProfile = await ensureEventPrintLimit();
+        printAutomation = await ensureEventPrintAutomationConfig();
+        mainComposition = await getMainCompositionConfig();
+      }
+
+      res.json({
+        eventId: getEventId(),
+        firestoreRoot: `/events/${getEventId()}`,
+        storageRoot: getStorageRoot(),
+        printLimitPerProfile,
+        printAutomation,
+        mainComposition,
+        firebaseConfig: getFirebasePublicConfig(),
+      });
+    });
+  } catch (error) {
+    console.error('[manager] failed to ensure event config', error);
+    next(error);
+  }
 });
 
 app.get('/api/photobooth/search/phone', async (req, res, next) => {
@@ -646,6 +749,35 @@ function buildPhoneCandidates(value) {
   }
 
   return Array.from(candidates).filter(Boolean).slice(0, 20);
+}
+
+function getRequestEventId(req) {
+  const candidate = (req.get && req.get('x-photobooth-event-id'))
+    || (req.query && req.query.eventId)
+    || (req.body && req.body.eventId)
+    || '';
+
+  return cleanEventId(cleanString(candidate, 120), '');
+}
+
+function runWithRequestEvent(req, task) {
+  return runWithEventId(getRequestEventId(req) || getEventId(), task);
+}
+
+function serializeEventDoc(id, data = {}) {
+  const eventId = cleanEventId(data.eventId || id, id);
+
+  return {
+    id: eventId,
+    eventId,
+    name: data.name || '',
+    firestoreRoot: `/events/${eventId}`,
+    printLimitPerProfile: data.printLimitPerProfile,
+    printAutomation: data.printAutomation || null,
+    stats: data.stats || {},
+    createdAt: data.createdAt || null,
+    updatedAt: data.updatedAt || null,
+  };
 }
 
 function timestampToMillis(value) {
