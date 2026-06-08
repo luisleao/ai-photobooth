@@ -141,7 +141,7 @@ function getResolvedTwilioConfig() {
     source: 'event',
     accountSid: event.accountSid || env.accountSid,
     authToken: event.authToken || env.authToken,
-    messagingServiceSid: event.messagingServiceSid || env.messagingServiceSid,
+    messagingServiceSid: event.whatsAppFrom ? '' : event.messagingServiceSid || env.messagingServiceSid,
     whatsAppFrom: event.whatsAppFrom || env.whatsAppFrom,
   };
 }
