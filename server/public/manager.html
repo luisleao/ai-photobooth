@@ -1086,15 +1086,16 @@
       }
 
       .package .actions {
-        justify-content: space-between;
-        gap: 6px;
+        justify-content: flex-end;
+        gap: 4px;
       }
 
       .package .actions .icon-button,
       .package .actions .button-link.icon-button {
-        width: 36px;
-        height: 36px;
-        flex: 0 0 36px;
+        width: auto;
+        min-width: 0;
+        height: 34px;
+        flex: 1 1 0;
       }
 
       .queue .actions {
@@ -2455,6 +2456,8 @@
               ${isError ? '' : `
                 <button type="button" class="secondary icon-button" data-action="adjust-main" ${subjectUrl ? '' : 'disabled'} aria-label="Adjust card" title="Adjust card"><i data-lucide="move"></i></button>
                 <button type="button" class="success icon-button" data-action="print-menu" aria-label="Print" title="Print"><i data-lucide="printer"></i></button>
+                <button type="button" class="secondary icon-button" data-action="resend-stickers" ${stickerItems.length ? '' : 'disabled'} aria-label="Resend stickers" title="Resend stickers"><i data-lucide="send"></i></button>
+                <button type="button" class="secondary icon-button" data-action="resend-sticker-pack" ${stickerSheetUrl ? '' : 'disabled'} aria-label="Resend sticker pack" title="Resend sticker pack"><i data-lucide="package"></i></button>
                 ${stickerSheetUrl
                   ? `<a class="button-link secondary icon-button" href="${escapeHtml(stickerSheetUrl)}" download target="_blank" rel="noopener" aria-label="Download stickers" title="Download stickers"><i data-lucide="download"></i></a>`
                   : '<button type="button" class="secondary icon-button" disabled aria-label="Download stickers" title="Download stickers"><i data-lucide="download"></i></button>'}
@@ -2504,6 +2507,14 @@
             mainAvailable: Boolean(mainUrl),
             stickersAvailable: Boolean(stickerSheetUrl),
           }));
+        }
+        const resendStickersButton = article.querySelector('[data-action="resend-stickers"]');
+        if (resendStickersButton) {
+          resendStickersButton.addEventListener('click', () => resendImageStickers(imageId, resendStickersButton));
+        }
+        const resendStickerPackButton = article.querySelector('[data-action="resend-sticker-pack"]');
+        if (resendStickerPackButton) {
+          resendStickerPackButton.addEventListener('click', () => resendStickerPack(imageId, resendStickerPackButton));
         }
 
         return article;
@@ -2660,6 +2671,38 @@
 
       async function regenerateImage(imageId) {
         await apiPost(`/api/photobooth/manager/images/${encodeURIComponent(imageId)}/regenerate`, {});
+      }
+
+      async function resendImageStickers(imageId, button) {
+        button.disabled = true;
+
+        try {
+          const result = await apiPost(
+            `/api/photobooth/manager/images/${encodeURIComponent(imageId)}/stickers/resend`,
+            {},
+          );
+          const failed = Number(result.failed || 0);
+          const sent = Number(result.sent || 0);
+          alert(failed > 0
+            ? `Resent ${sent} sticker(s), ${failed} failed.`
+            : `Resent ${sent} sticker(s).`);
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      async function resendStickerPack(imageId, button) {
+        button.disabled = true;
+
+        try {
+          await apiPost(
+            `/api/photobooth/manager/images/${encodeURIComponent(imageId)}/sticker-pack/resend`,
+            {},
+          );
+          alert('Sticker pack resent.');
+        } finally {
+          button.disabled = false;
+        }
       }
 
       async function updatePrintStatus(printId, status) {

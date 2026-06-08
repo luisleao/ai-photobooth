@@ -51,6 +51,8 @@ const {
   handleWhatsAppWebhook,
   recomposeMainImage,
   regenerateImagePackage,
+  resendImageStickers,
+  resendStickerSheetPack,
   resendStickerOutput,
 } = require('./services/whatsappPhotobooth');
 const {
@@ -599,6 +601,46 @@ app.post('/api/photobooth/manager/images/:imageId/main-composition/regenerate', 
       composition: req.body && req.body.composition ? req.body.composition : req.body,
       requestedBy: user.email || user.uid,
       sendWhatsApp: true,
+    });
+
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/photobooth/manager/images/:imageId/stickers/resend', async (req, res, next) => {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+    const imageId = cleanString(req.params.imageId, 160);
+
+    if (!imageId) {
+      throw clientError('missing_image_id', 'Informe a imagem para reenvio.');
+    }
+
+    const result = await resendImageStickers({
+      imageId,
+      requestedBy: user.email || user.uid,
+    });
+
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/photobooth/manager/images/:imageId/sticker-pack/resend', async (req, res, next) => {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+    const imageId = cleanString(req.params.imageId, 160);
+
+    if (!imageId) {
+      throw clientError('missing_image_id', 'Informe a imagem para reenvio.');
+    }
+
+    const result = await resendStickerSheetPack({
+      imageId,
+      requestedBy: user.email || user.uid,
     });
 
     res.json(result);

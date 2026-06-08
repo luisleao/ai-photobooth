@@ -522,6 +522,183 @@ async function resendStickerOutput({
   };
 }
 
+async function resendImageStickers({
+  imageId,
+  requestedBy,
+}) {
+  const imageRef = getImageRef(imageId);
+  const imageSnap = await imageRef.get();
+
+  if (!imageSnap.exists) {
+    throw clientError('image_not_found', 'Imagem nao encontrada para reenvio.');
+  }
+
+  const imageData = imageSnap.data() || {};
+  const profile = getProfileFromImageData(imageData);
+
+  if (!profile.whatsAppAddress) {
+    throw clientError('missing_profile_address', 'Imagem sem WhatsApp de destino para reenvio.');
+  }
+
+  const stickers = Object.entries(imageData.outputs || {})
+    .map(([outputId, output]) => ({
+      outputId,
+      output,
+      file: getStickerDeliveryFile(output),
+    }))
+    .filter((item) => (
+      item.output
+      && item.output.kind === 'sticker'
+      && item.file
+      && item.file.signedUrl
+    ));
+
+  if (!stickers.length) {
+    throw clientError('stickers_not_found', 'Nenhuma figurinha encontrada para reenvio.');
+  }
+
+  let sent = 0;
+  let failed = 0;
+  const now = Timestamp.now();
+
+  for (const item of stickers) {
+    try {
+      const message = await sendEventWhatsAppMedia(profile.whatsAppAddress, {
+        mediaUrl: item.file.signedUrl,
+      });
+      sent += 1;
+
+      await imageRef.set({
+        updatedAt: Timestamp.now(),
+        resends: {
+          [item.outputId]: {
+            status: 'sent',
+            requestedBy: requestedBy || '',
+            source: 'manager-resend-stickers',
+            messageSid: message.sid || '',
+            fileType: item.file.type || '',
+            sentAt: Timestamp.now(),
+          },
+        },
+      }, { merge: true });
+    } catch (error) {
+      failed += 1;
+      console.error(`[manager] failed to resend sticker ${imageId}/${item.outputId}`, error);
+
+      await imageRef.set({
+        updatedAt: Timestamp.now(),
+        resends: {
+          [item.outputId]: {
+            status: 'failed',
+            requestedBy: requestedBy || '',
+            source: 'manager-resend-stickers',
+            fileType: item.file.type || '',
+            error: publicError(error),
+            errorDetails: detailedError(error),
+            failedAt: Timestamp.now(),
+          },
+        },
+      }, { merge: true });
+    }
+  }
+
+  await imageRef.set({
+    updatedAt: Timestamp.now(),
+    lastStickerResendRequest: {
+      status: failed > 0 ? 'completed-with-errors' : 'sent',
+      requestedBy: requestedBy || '',
+      requestedAt: now,
+      completedAt: Timestamp.now(),
+      sent,
+      failed,
+      total: stickers.length,
+    },
+  }, { merge: true });
+
+  return {
+    ok: failed === 0,
+    imageId,
+    sent,
+    failed,
+    total: stickers.length,
+  };
+}
+
+async function resendStickerSheetPack({
+  imageId,
+  requestedBy,
+}) {
+  const imageRef = getImageRef(imageId);
+  const imageSnap = await imageRef.get();
+
+  if (!imageSnap.exists) {
+    throw clientError('image_not_found', 'Imagem nao encontrada para reenvio.');
+  }
+
+  const imageData = imageSnap.data() || {};
+  const profile = getProfileFromImageData(imageData);
+  const printAutomation = await ensureEventPrintAutomationConfig();
+  const destination = normalizeConfiguredWhatsAppNumber(printAutomation.stickerSheetPackWhatsAppTo);
+  const stickerSheetFile = imageData.stickerSheet || {};
+  const mediaUrl = stickerSheetFile.signedUrl || stickerSheetFile.url || '';
+
+  if (!destination) {
+    throw clientError('missing_sticker_pack_destination', 'Configure o numero de destino do pack de stickers no evento.');
+  }
+
+  if (!mediaUrl) {
+    throw clientError('sticker_sheet_not_found', 'Sticker pack nao encontrado para reenvio.');
+  }
+
+  const now = Timestamp.now();
+
+  try {
+    const message = await sendEventWhatsAppMedia(destination, {
+      body: buildStickerSheetPackMessage({
+        profile,
+        mediaUrl,
+      }),
+      mediaUrl,
+    });
+
+    await imageRef.set({
+      updatedAt: now,
+      stickerSheetPackDelivery: {
+        status: 'sent',
+        to: destination,
+        messageSid: message.sid || '',
+        mediaUrl,
+        source: 'manager-resend-sticker-pack',
+        requestedBy: requestedBy || '',
+        sentAt: now,
+      },
+    }, { merge: true });
+
+    return {
+      ok: true,
+      imageId,
+      to: destination,
+      messageSid: message.sid || '',
+    };
+  } catch (error) {
+    await imageRef.set({
+      updatedAt: now,
+      stickerSheetPackDelivery: {
+        status: 'failed',
+        to: destination,
+        mediaUrl,
+        source: 'manager-resend-sticker-pack',
+        requestedBy: requestedBy || '',
+        error: publicError(error),
+        errorDetails: detailedError(error),
+        failedAt: now,
+      },
+    }, { merge: true });
+
+    throw error;
+  }
+}
+
 async function resendGeneratedStickersForProfile({
   profile,
   requestedBy,
@@ -1977,5 +2154,7 @@ module.exports = {
   handleWhatsAppWebhook,
   recomposeMainImage,
   regenerateImagePackage,
+  resendImageStickers,
+  resendStickerSheetPack,
   resendStickerOutput,
 };
