@@ -325,6 +325,8 @@ app.post('/api/photobooth/manager/event-config', async (req, res, next) => {
       if (req.body && req.body.printAutomation) {
         payload.autoPrintMainOnReady = req.body.printAutomation.autoPrintMainOnReady === true;
         payload.autoPrintStickerSheetOnReady = req.body.printAutomation.autoPrintStickerSheetOnReady === true;
+        payload.autoSendStickerSheetPackOnReady = req.body.printAutomation.autoSendStickerSheetPackOnReady === true;
+        payload.stickerSheetPackWhatsAppTo = cleanString(req.body.printAutomation.stickerSheetPackWhatsAppTo, 80);
       }
 
       if (req.body && req.body.twilio) {
@@ -1013,6 +1015,8 @@ function serializePrintAutomation(data = {}) {
   return {
     autoPrintMainOnReady: data.autoPrintMainOnReady === true,
     autoPrintStickerSheetOnReady: data.autoPrintStickerSheetOnReady === true,
+    autoSendStickerSheetPackOnReady: data.autoSendStickerSheetPackOnReady === true,
+    stickerSheetPackWhatsAppTo: data.stickerSheetPackWhatsAppTo || '',
   };
 }
 

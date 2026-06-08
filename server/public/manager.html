@@ -1371,6 +1371,14 @@
               <input id="settings-auto-print-stickers" type="checkbox" />
               Auto-print stickers when ready
             </label>
+            <label class="settings-toggle">
+              <input id="settings-auto-send-sticker-pack" type="checkbox" />
+              Send sticker print pack by WhatsApp
+            </label>
+            <label class="settings-field">
+              Sticker pack recipient
+              <input id="settings-sticker-pack-whatsapp-to" type="text" autocomplete="off" placeholder="whatsapp:+5511999999999" />
+            </label>
           </div>
         </section>
 
@@ -1706,6 +1714,8 @@
       const settingsLanguage = document.getElementById('settings-language');
       const settingsAutoPrintMain = document.getElementById('settings-auto-print-main');
       const settingsAutoPrintStickers = document.getElementById('settings-auto-print-stickers');
+      const settingsAutoSendStickerPack = document.getElementById('settings-auto-send-sticker-pack');
+      const settingsStickerPackWhatsAppTo = document.getElementById('settings-sticker-pack-whatsapp-to');
       const settingsWebhookUrl = document.getElementById('settings-webhook-url');
       const settingsCopyWebhook = document.getElementById('settings-copy-webhook');
       const settingsSearchUrl = document.getElementById('settings-search-url');
@@ -1956,6 +1966,8 @@
         settingsPrintLimit.value = config.printLimitPerProfile ?? '';
         settingsAutoPrintMain.checked = config.printAutomation?.autoPrintMainOnReady === true;
         settingsAutoPrintStickers.checked = config.printAutomation?.autoPrintStickerSheetOnReady === true;
+        settingsAutoSendStickerPack.checked = config.printAutomation?.autoSendStickerSheetPackOnReady === true;
+        settingsStickerPackWhatsAppTo.value = config.printAutomation?.stickerSheetPackWhatsAppTo || '';
         settingsLanguage.innerHTML = languages
           .map((language) => `<option value="${escapeAttr(language.code)}">${escapeHtml(language.label)}</option>`)
           .join('');
@@ -2033,6 +2045,8 @@
             printAutomation: {
               autoPrintMainOnReady: settingsAutoPrintMain.checked,
               autoPrintStickerSheetOnReady: settingsAutoPrintStickers.checked,
+              autoSendStickerSheetPackOnReady: settingsAutoSendStickerPack.checked,
+              stickerSheetPackWhatsAppTo: settingsStickerPackWhatsAppTo.value,
             },
             twilio: {
               mode: settingsTwilioMode.value,

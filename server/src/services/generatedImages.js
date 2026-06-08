@@ -16,6 +16,11 @@ const {
   buildPromptForSpec,
   getImageSpecSummaries,
 } = require('./worldCupImagePrompts');
+const {
+  runWithTwilioConfig,
+  sendWhatsAppMedia,
+  toWhatsAppAddress,
+} = require('./twilioWhatsApp');
 
 const SERVER_ROOT = path.resolve(__dirname, '..', '..');
 const PROJECT_ROOT = path.resolve(SERVER_ROOT, '..');
@@ -404,7 +409,107 @@ async function ensureGeneratorAutoPrintRequests({
     }));
   }
 
+  if (printAutomation.autoSendStickerSheetPackOnReady && stickerSheet) {
+    tasks.push(sendGeneratorStickerSheetPackByWhatsApp({
+      imageRef,
+      imageData,
+      stickerSheetFile: stickerSheet,
+      printAutomation,
+      now,
+    }));
+  }
+
   await Promise.all(tasks);
+}
+
+async function sendGeneratorStickerSheetPackByWhatsApp({
+  imageRef,
+  imageData = {},
+  stickerSheetFile = {},
+  printAutomation = {},
+  now,
+}) {
+  const destination = normalizeConfiguredWhatsAppNumber(printAutomation.stickerSheetPackWhatsAppTo);
+  const mediaUrl = stickerSheetFile.signedUrl || stickerSheetFile.url || '';
+
+  if (!destination || !mediaUrl) {
+    return;
+  }
+
+  try {
+    const twilioConfig = await loadCurrentEventTwilioConfig();
+    const message = await runWithTwilioConfig(twilioConfig, () => sendWhatsAppMedia(destination, {
+      body: buildStickerSheetPackMessage({
+        imageData,
+        mediaUrl,
+      }),
+      mediaUrl,
+    }));
+
+    await imageRef.set({
+      updatedAt: now,
+      stickerSheetPackDelivery: {
+        status: 'sent',
+        to: destination,
+        messageSid: message.sid || '',
+        mediaUrl,
+        source: 'generator-sticker-pack',
+        sentAt: now,
+      },
+    }, { merge: true });
+  } catch (error) {
+    console.error('[generator] failed to send sticker sheet pack', error);
+    await imageRef.set({
+      updatedAt: now,
+      stickerSheetPackDelivery: {
+        status: 'failed',
+        to: destination,
+        mediaUrl,
+        source: 'generator-sticker-pack',
+        error: publicError(error),
+        failedAt: now,
+      },
+    }, { merge: true });
+  }
+}
+
+async function loadCurrentEventTwilioConfig() {
+  if (!isFirebaseConfigured()) {
+    return {};
+  }
+
+  const snap = await getEventRef().get();
+  const data = snap.exists ? snap.data() || {} : {};
+
+  return data.twilio || {};
+}
+
+function normalizeConfiguredWhatsAppNumber(value) {
+  const text = String(value || '').trim();
+
+  return text ? toWhatsAppAddress(text) : '';
+}
+
+function buildStickerSheetPackMessage({
+  imageData = {},
+  mediaUrl = '',
+}) {
+  const profile = imageData.profile || {};
+  const params = imageData.params || {};
+
+  return [
+    'Pack de stickers pronto para impressao.',
+    `Nome: ${profile.profileName || params.participantName || '-'}`,
+    `Telefone: ${profile.phoneNumber || params.participantPhone || params.phoneNumber || '-'}`,
+    `Imagem: ${mediaUrl || '-'}`,
+  ].join('\n');
+}
+
+function publicError(error) {
+  return {
+    code: error.code || 'sticker_pack_whatsapp_failed',
+    message: error.publicMessage || error.message || 'Falha ao enviar pack de stickers por WhatsApp.',
+  };
 }
 
 async function createGeneratorPrintRequest({
@@ -1530,14 +1635,19 @@ async function ensureEventPrintAutomationConfig() {
   const data = snap.exists ? snap.data() || {} : {};
   const hasMainConfig = typeof data.autoPrintMainOnReady === 'boolean';
   const hasStickerSheetConfig = typeof data.autoPrintStickerSheetOnReady === 'boolean';
+  const hasStickerSheetPackConfig = typeof data.autoSendStickerSheetPackOnReady === 'boolean';
   const autoPrintMainOnReady = hasMainConfig
     ? data.autoPrintMainOnReady
     : DEFAULT_AUTO_PRINT_ON_GENERATION;
   const autoPrintStickerSheetOnReady = hasStickerSheetConfig
     ? data.autoPrintStickerSheetOnReady
     : DEFAULT_AUTO_PRINT_ON_GENERATION;
+  const autoSendStickerSheetPackOnReady = hasStickerSheetPackConfig
+    ? data.autoSendStickerSheetPackOnReady
+    : false;
+  const stickerSheetPackWhatsAppTo = normalizeConfiguredWhatsAppNumber(data.stickerSheetPackWhatsAppTo);
 
-  if (!hasMainConfig || !hasStickerSheetConfig || data.eventId !== getEventId()) {
+  if (!hasMainConfig || !hasStickerSheetConfig || !hasStickerSheetPackConfig || data.eventId !== getEventId()) {
     const payload = {
       eventId: getEventId(),
       updatedAt: Timestamp.now(),
@@ -1551,12 +1661,18 @@ async function ensureEventPrintAutomationConfig() {
       payload.autoPrintStickerSheetOnReady = autoPrintStickerSheetOnReady;
     }
 
+    if (!hasStickerSheetPackConfig) {
+      payload.autoSendStickerSheetPackOnReady = autoSendStickerSheetPackOnReady;
+    }
+
     await eventRef.set(payload, { merge: true });
   }
 
   return {
     autoPrintMainOnReady,
     autoPrintStickerSheetOnReady,
+    autoSendStickerSheetPackOnReady,
+    stickerSheetPackWhatsAppTo,
   };
 }
 

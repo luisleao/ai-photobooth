@@ -29,6 +29,7 @@ const {
 const {
   createMessagingResponse,
   downloadTwilioMedia,
+  runWithTwilioConfig,
   sendWhatsAppMedia,
   sendWhatsAppText,
   toWhatsAppAddress,
@@ -833,6 +834,71 @@ async function generatePackageFromSource({
       },
     });
   }
+
+  await maybeSendStickerSheetPackByWhatsApp({
+    imageRef,
+    profile,
+    stickerSheetFile: {
+      ...stickerSheet,
+      ...stickerSheetUpload,
+    },
+    printAutomation,
+    source: trigger === 'manager-regenerate' ? 'regenerate-sticker-pack' : 'automatic-sticker-pack',
+  });
+}
+
+async function maybeSendStickerSheetPackByWhatsApp({
+  imageRef,
+  profile = {},
+  stickerSheetFile = {},
+  printAutomation = {},
+  source = 'automatic-sticker-pack',
+}) {
+  const destination = normalizeConfiguredWhatsAppNumber(printAutomation.stickerSheetPackWhatsAppTo);
+  const mediaUrl = stickerSheetFile.signedUrl || stickerSheetFile.url || '';
+
+  if (!printAutomation.autoSendStickerSheetPackOnReady || !destination || !mediaUrl) {
+    return;
+  }
+
+  const now = Timestamp.now();
+
+  try {
+    const twilioConfig = await loadCurrentEventTwilioConfig();
+    const message = await runWithTwilioConfig(twilioConfig, () => sendWhatsAppMedia(destination, {
+      body: buildStickerSheetPackMessage({
+        profile,
+        mediaUrl,
+      }),
+      mediaUrl,
+    }));
+
+    await imageRef.set({
+      updatedAt: now,
+      stickerSheetPackDelivery: {
+        status: 'sent',
+        to: destination,
+        messageSid: message.sid || '',
+        mediaUrl,
+        source,
+        sentAt: now,
+      },
+    }, { merge: true });
+  } catch (error) {
+    console.error('[whatsapp] failed to send sticker sheet pack', error);
+    await imageRef.set({
+      updatedAt: now,
+      stickerSheetPackDelivery: {
+        status: 'failed',
+        to: destination,
+        mediaUrl,
+        source,
+        error: publicError(error),
+        errorDetails: detailedError(error),
+        failedAt: now,
+      },
+    }, { merge: true });
+  }
 }
 
 async function uploadAndSendOutput({
@@ -1296,14 +1362,19 @@ async function ensureEventPrintAutomationConfig() {
   const data = snap.exists ? snap.data() || {} : {};
   const hasMainConfig = typeof data.autoPrintMainOnReady === 'boolean';
   const hasStickerSheetConfig = typeof data.autoPrintStickerSheetOnReady === 'boolean';
+  const hasStickerSheetPackConfig = typeof data.autoSendStickerSheetPackOnReady === 'boolean';
   const autoPrintMainOnReady = hasMainConfig
     ? data.autoPrintMainOnReady
     : DEFAULT_AUTO_PRINT_ON_GENERATION;
   const autoPrintStickerSheetOnReady = hasStickerSheetConfig
     ? data.autoPrintStickerSheetOnReady
     : DEFAULT_AUTO_PRINT_ON_GENERATION;
+  const autoSendStickerSheetPackOnReady = hasStickerSheetPackConfig
+    ? data.autoSendStickerSheetPackOnReady
+    : false;
+  const stickerSheetPackWhatsAppTo = normalizeConfiguredWhatsAppNumber(data.stickerSheetPackWhatsAppTo);
 
-  if (!hasMainConfig || !hasStickerSheetConfig || data.eventId !== getEventId()) {
+  if (!hasMainConfig || !hasStickerSheetConfig || !hasStickerSheetPackConfig || data.eventId !== getEventId()) {
     const payload = {
       eventId: getEventId(),
       updatedAt: Timestamp.now(),
@@ -1317,13 +1388,48 @@ async function ensureEventPrintAutomationConfig() {
       payload.autoPrintStickerSheetOnReady = autoPrintStickerSheetOnReady;
     }
 
+    if (!hasStickerSheetPackConfig) {
+      payload.autoSendStickerSheetPackOnReady = autoSendStickerSheetPackOnReady;
+    }
+
     await eventRef.set(payload, { merge: true });
   }
 
   return {
     autoPrintMainOnReady,
     autoPrintStickerSheetOnReady,
+    autoSendStickerSheetPackOnReady,
+    stickerSheetPackWhatsAppTo,
   };
+}
+
+async function loadCurrentEventTwilioConfig() {
+  if (!isFirebaseConfigured()) {
+    return {};
+  }
+
+  const snap = await getEventRef().get();
+  const data = snap.exists ? snap.data() || {} : {};
+
+  return data.twilio || {};
+}
+
+function normalizeConfiguredWhatsAppNumber(value) {
+  const text = String(value || '').trim();
+
+  return text ? toWhatsAppAddress(text) : '';
+}
+
+function buildStickerSheetPackMessage({
+  profile = {},
+  mediaUrl = '',
+}) {
+  return [
+    'Pack de stickers pronto para impressao.',
+    `Nome: ${profile.profileName || '-'}`,
+    `Telefone: ${profile.phoneNumber || profile.whatsAppAddress || '-'}`,
+    `Imagem: ${mediaUrl || '-'}`,
+  ].join('\n');
 }
 
 async function checkProfileImageLimit(profileId) {
