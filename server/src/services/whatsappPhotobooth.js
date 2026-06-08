@@ -422,7 +422,7 @@ async function recomposeMainImage({
 
   if (sendWhatsApp && profile.whatsAppAddress) {
     try {
-      const message = await sendWhatsAppMedia(profile.whatsAppAddress, {
+      const message = await sendEventWhatsAppMedia(profile.whatsAppAddress, {
         mediaUrl: whatsappFile.signedUrl,
       });
       messageSid = message.sid || '';
@@ -496,7 +496,7 @@ async function resendStickerOutput({
     throw clientError('sticker_file_not_found', 'Arquivo do sticker nao encontrado para reenvio.');
   }
 
-  const message = await sendWhatsAppMedia(profile.whatsAppAddress, {
+  const message = await sendEventWhatsAppMedia(profile.whatsAppAddress, {
     mediaUrl: file.signedUrl,
   });
   const now = Timestamp.now();
@@ -589,7 +589,7 @@ async function resendGeneratedStickersForProfile({
   }, { merge: true });
 
   if (!stickers.length) {
-    await sendWhatsAppText(
+    await sendEventWhatsAppText(
       destination,
       t('stickerResendEmpty'),
     );
@@ -607,7 +607,7 @@ async function resendGeneratedStickersForProfile({
 
   for (const item of stickers) {
     try {
-      const message = await sendWhatsAppMedia(destination, {
+      const message = await sendEventWhatsAppMedia(destination, {
         mediaUrl: item.file.signedUrl,
       });
       sent += 1;
@@ -650,7 +650,7 @@ async function resendGeneratedStickersForProfile({
     ? t('stickerResendPartial', { sent, failed })
     : t('stickerResendSuccess', { sent });
 
-  await sendWhatsAppText(destination, summary);
+  await sendEventWhatsAppText(destination, summary);
 
   await getProfileRef(profile.id).set({
     lastStickerResendRequest: {
@@ -864,14 +864,13 @@ async function maybeSendStickerSheetPackByWhatsApp({
   const now = Timestamp.now();
 
   try {
-    const twilioConfig = await loadCurrentEventTwilioConfig();
-    const message = await runWithTwilioConfig(twilioConfig, () => sendWhatsAppMedia(destination, {
+    const message = await sendEventWhatsAppMedia(destination, {
       body: buildStickerSheetPackMessage({
         profile,
         mediaUrl,
       }),
       mediaUrl,
-    }));
+    });
 
     await imageRef.set({
       updatedAt: now,
@@ -970,7 +969,7 @@ async function uploadAndSendOutput({
 
   if (deliveryFile) {
     try {
-      const message = await sendWhatsAppMedia(profile.whatsAppAddress, {
+      const message = await sendEventWhatsAppMedia(profile.whatsAppAddress, {
         mediaUrl: deliveryFile.signedUrl,
       });
 
@@ -1414,6 +1413,16 @@ async function loadCurrentEventTwilioConfig() {
   return data.twilio || {};
 }
 
+async function sendEventWhatsAppMedia(to, options) {
+  const twilioConfig = await loadCurrentEventTwilioConfig();
+  return runWithTwilioConfig(twilioConfig, () => sendWhatsAppMedia(to, options));
+}
+
+async function sendEventWhatsAppText(to, body) {
+  const twilioConfig = await loadCurrentEventTwilioConfig();
+  return runWithTwilioConfig(twilioConfig, () => sendWhatsAppText(to, body));
+}
+
 function normalizeConfiguredWhatsAppNumber(value) {
   const text = String(value || '').trim();
 
@@ -1596,7 +1605,7 @@ async function notifyGenerationFailure({
 
   try {
     const t = await getCurrentEventTranslator();
-    const message = await sendWhatsAppText(
+    const message = await sendEventWhatsAppText(
       profile.whatsAppAddress,
       t('generationFailure'),
     );
