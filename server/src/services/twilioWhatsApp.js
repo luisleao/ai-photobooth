@@ -32,18 +32,21 @@ function getTwilioClient() {
 function getSenderFields() {
   const config = getResolvedTwilioConfig();
   const messagingServiceSid = config.messagingServiceSid || '';
+  const from = config.whatsAppFrom || '';
+
+  if (from) {
+    return { from: toWhatsAppAddress(from) };
+  }
 
   if (messagingServiceSid.startsWith('MG')) {
     return { messagingServiceSid };
   }
 
-  const from = config.whatsAppFrom || messagingServiceSid;
-
-  if (!from) {
+  if (!messagingServiceSid) {
     throw configurationError('twilio_sender_not_configured', 'Configure TWILIO_WHATSAPP_FROM ou TWILIO_MESSAGING_SERVICE_SID.');
   }
 
-  return { from: toWhatsAppAddress(from) };
+  return { from: toWhatsAppAddress(messagingServiceSid) };
 }
 
 async function sendWhatsAppText(to, body) {
