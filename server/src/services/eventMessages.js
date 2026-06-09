@@ -29,6 +29,7 @@ const MESSAGES = {
     printStickersReady: 'Seus stickers estao impressos e ja podem ser retirados na estacao do photobooth.',
     printRequestMain: 'Cartao enviado para impressao automatica.',
     printRequestStickers: 'Combinado. Seus stickers entraram na fila de impressao.',
+    raffleWinner: 'Parabéns, você foi sorteado(a)!\n\nApresente esta mensagem para uma pessoa da Twilio para retirar seu brinde.',
   },
   'en-us': {
     webhookMissingSender: 'Invalid webhook: sender is missing.',
@@ -49,6 +50,7 @@ const MESSAGES = {
     printStickersReady: 'Your stickers have been printed and are ready for pickup at the photobooth station.',
     printRequestMain: 'Card sent to automatic printing.',
     printRequestStickers: 'All set. Your stickers have been added to the print queue.',
+    raffleWinner: 'Congratulations! You were selected in the raffle. Raffle ID: {raffleId}. Please contact the event team for more information.',
   },
   'fr-fr': {
     webhookMissingSender: 'Webhook invalide : expediteur manquant.',
@@ -69,6 +71,7 @@ const MESSAGES = {
     printStickersReady: 'Vos stickers ont ete imprimes et peuvent etre retires a la station photobooth.',
     printRequestMain: 'Carte envoyee a l impression automatique.',
     printRequestStickers: 'C est note. Vos stickers ont ete ajoutes a la file d impression.',
+    raffleWinner: 'Felicitations ! Vous avez ete tire(e) au sort. ID du tirage : {raffleId}. Veuillez contacter l equipe de l evenement pour plus d informations.',
   },
   'es-es': {
     webhookMissingSender: 'Webhook invalido: falta el remitente.',
@@ -89,6 +92,7 @@ const MESSAGES = {
     printStickersReady: 'Tus stickers fueron impresos y ya puedes retirarlos en la estacion del photobooth.',
     printRequestMain: 'Tarjeta enviada a impresion automatica.',
     printRequestStickers: 'Listo. Tus stickers entraron en la cola de impresion.',
+    raffleWinner: 'Felicidades! Fuiste seleccionado(a) en el sorteo. ID del sorteo: {raffleId}. Contacta al equipo del evento para mas informacion.',
   },
   'de-de': {
     webhookMissingSender: 'Ungueltiger Webhook: Absender fehlt.',
@@ -109,6 +113,7 @@ const MESSAGES = {
     printStickersReady: 'Deine Sticker wurden gedruckt und koennen an der Photobooth-Station abgeholt werden.',
     printRequestMain: 'Karte wurde an den automatischen Druck gesendet.',
     printRequestStickers: 'Alles klar. Deine Sticker wurden zur Druckwarteschlange hinzugefuegt.',
+    raffleWinner: 'Glueckwunsch! Du wurdest bei der Verlosung ausgewaehlt. Verlosungs-ID: {raffleId}. Bitte kontaktiere das Event-Team fuer weitere Informationen.',
   },
 };
 

@@ -34,6 +34,9 @@ const {
   sendWhatsAppText,
   toWhatsAppAddress,
 } = require('./twilioWhatsApp');
+const {
+  createRaffleRandomKey,
+} = require('./raffle');
 
 const SERVER_ROOT = path.resolve(__dirname, '..', '..');
 const PROJECT_ROOT = path.resolve(SERVER_ROOT, '..');
@@ -1385,6 +1388,14 @@ async function createImageRecord({
     imageRef.set(imageRecord, { merge: true }),
     getProfileRef(profile.id).set({
       latestImageId: imageId,
+      ...(isNew && accepted ? {
+        lastRaffleInteractionAt: now,
+        ...(profile.firstRaffleInteractionAt ? {} : { firstRaffleInteractionAt: now }),
+        raffleInteractionCount: FieldValue.increment(1),
+        raffleRandomKey: Number.isFinite(profile.raffleRandomKey)
+          ? profile.raffleRandomKey
+          : createRaffleRandomKey(),
+      } : {}),
       updatedAt: now,
     }, { merge: true }),
   ]);
@@ -1410,6 +1421,10 @@ async function upsertProfile(messageData = {}) {
     whatsAppAddress: toWhatsAppAddress(messageData.From),
     profileName: String(messageData.ProfileName || '').trim(),
     waId: String(messageData.WaId || '').trim(),
+    firstRaffleInteractionAt: existingData.firstRaffleInteractionAt || null,
+    raffleRandomKey: Number.isFinite(existingData.raffleRandomKey)
+      ? existingData.raffleRandomKey
+      : createRaffleRandomKey(),
   };
 
   await profileRef.set({
@@ -1435,7 +1450,14 @@ async function upsertProfile(messageData = {}) {
       },
     }),
     ...(existingData.unlimited === undefined ? { unlimited: false } : {}),
-    ...profile,
+    ...(Number.isFinite(existingData.raffleRandomKey) ? {} : {
+      raffleRandomKey: profile.raffleRandomKey,
+    }),
+    id: profile.id,
+    phoneNumber: profile.phoneNumber,
+    whatsAppAddress: profile.whatsAppAddress,
+    profileName: profile.profileName,
+    waId: profile.waId,
     whatsappProfile: {
       profileName: profile.profileName,
       waId: profile.waId,

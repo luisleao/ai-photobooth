@@ -902,6 +902,64 @@
         min-height: 64px;
       }
 
+      .raffle-layout {
+        display: grid;
+        gap: 16px;
+      }
+
+      .raffle-form {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(120px, 1fr));
+        gap: 12px;
+        align-items: end;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .raffle-form button {
+        min-height: 42px;
+      }
+
+      .raffle-message {
+        min-height: 20px;
+        color: var(--muted);
+      }
+
+      .raffle-results {
+        display: grid;
+        gap: 12px;
+      }
+
+      .raffle-card {
+        display: grid;
+        gap: 12px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .winner-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+        gap: 10px;
+      }
+
+      .winner-card {
+        display: grid;
+        gap: 4px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8fafc;
+      }
+
+      .winner-card strong {
+        font-size: 15px;
+      }
+
       .composition-modal {
         position: fixed;
         inset: 0;
@@ -1173,6 +1231,10 @@
           grid-template-columns: 1fr;
         }
 
+        .raffle-form {
+          grid-template-columns: 1fr 1fr;
+        }
+
         .print-queue-columns {
           grid-template-columns: 1fr;
         }
@@ -1246,6 +1308,7 @@
           <button class="tab-button active" id="images-tab-button" type="button" data-tab="images">Images</button>
           <button class="tab-button" id="profiles-tab-button" type="button" data-tab="profiles">Participants</button>
           <button class="tab-button" id="prints-tab-button" type="button" data-tab="prints">Print Queue</button>
+          <button class="tab-button" id="raffles-tab-button" type="button" data-tab="raffles">Raffle</button>
         </div>
 
         <div class="tab-panel" id="images-tab">
@@ -1309,6 +1372,53 @@
               </div>
               <div class="queue-list" id="sticker-prints"></div>
             </section>
+          </div>
+        </div>
+
+        <div class="tab-panel hidden" id="raffles-tab">
+          <div class="toolbar">
+            <div>
+              <h2>Raffle</h2>
+              <small id="raffle-count">0 raffle(s)</small>
+            </div>
+            <button class="warning icon-button" id="raffle-clear-all" type="button" aria-label="Clear all raffles" title="Clear all raffles">
+              <i data-lucide="trash-2"></i>
+            </button>
+          </div>
+          <div class="raffle-layout">
+            <form class="raffle-form" id="raffle-form">
+              <label>
+                Mode
+                <select id="raffle-mode">
+                  <option value="all">All participants</option>
+                  <option value="lastHours">Last X hours</option>
+                  <option value="range">Custom range</option>
+                </select>
+              </label>
+              <label id="raffle-last-hours-field">
+                Last hours
+                <input id="raffle-last-hours" type="number" min="1" max="8760" step="1" value="4" />
+              </label>
+              <label id="raffle-start-field">
+                Start
+                <input id="raffle-start" type="datetime-local" />
+              </label>
+              <label id="raffle-end-field">
+                End
+                <input id="raffle-end" type="datetime-local" />
+              </label>
+              <label>
+                Winners
+                <input id="raffle-winner-count" type="number" min="1" max="50" step="1" value="1" />
+              </label>
+              <label class="settings-toggle">
+                <input id="raffle-exclude-previous-winners" type="checkbox" checked />
+                Exclude previous winners
+              </label>
+              <button class="success" id="raffle-run" type="submit">Run Raffle</button>
+            </form>
+            <p class="raffle-message" id="raffle-message"></p>
+            <div class="raffle-results" id="raffle-results"></div>
           </div>
         </div>
       </section>
@@ -1542,6 +1652,24 @@
       </section>
     </div>
 
+    <div class="print-modal hidden" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <section class="print-panel">
+        <div class="print-panel-header">
+          <div>
+            <h2 id="confirm-title">Confirm</h2>
+            <p class="muted" id="confirm-message"></p>
+          </div>
+          <button class="secondary icon-button" id="confirm-close" type="button" aria-label="Close" title="Close">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="print-options">
+          <button class="secondary" id="confirm-cancel" type="button">Cancel</button>
+          <button class="warning" id="confirm-action" type="button">Confirm</button>
+        </div>
+      </section>
+    </div>
+
     <div class="composition-modal hidden" id="composition-modal" role="dialog" aria-modal="true" aria-label="Adjust card">
       <section class="composition-panel">
         <div class="composition-panel-header">
@@ -1634,6 +1762,7 @@
         profileUnsubscribe: null,
         printUnsubscribe: null,
         printRows: [],
+        raffleRows: [],
         printStatusFilter: 'open',
         zoomSticker: null,
         zoomStickerItems: [],
@@ -1641,6 +1770,7 @@
         compareDialog: null,
         errorDialog: null,
         printDialog: null,
+        confirmDialog: null,
         selectedProfile: null,
         mainCompositionConfig: null,
         mainCompositionDefaults: {
@@ -1671,6 +1801,21 @@
       const printStatusFilter = document.getElementById('print-status-filter');
       const clearMainPrints = document.getElementById('clear-main-prints');
       const clearStickerPrints = document.getElementById('clear-sticker-prints');
+      const raffleForm = document.getElementById('raffle-form');
+      const raffleMode = document.getElementById('raffle-mode');
+      const raffleLastHoursField = document.getElementById('raffle-last-hours-field');
+      const raffleLastHours = document.getElementById('raffle-last-hours');
+      const raffleStartField = document.getElementById('raffle-start-field');
+      const raffleStart = document.getElementById('raffle-start');
+      const raffleEndField = document.getElementById('raffle-end-field');
+      const raffleEnd = document.getElementById('raffle-end');
+      const raffleWinnerCount = document.getElementById('raffle-winner-count');
+      const raffleExcludePreviousWinners = document.getElementById('raffle-exclude-previous-winners');
+      const raffleRun = document.getElementById('raffle-run');
+      const raffleClearAll = document.getElementById('raffle-clear-all');
+      const raffleMessage = document.getElementById('raffle-message');
+      const raffleResults = document.getElementById('raffle-results');
+      const raffleCount = document.getElementById('raffle-count');
       const metricPhotosGenerated = document.getElementById('metric-photos-generated');
       const metricMainPrinted = document.getElementById('metric-main-printed');
       const metricStickersPrinted = document.getElementById('metric-stickers-printed');
@@ -1699,6 +1844,12 @@
       const printStickersPreview = document.getElementById('print-stickers-preview');
       const printMainOption = document.getElementById('print-main-option');
       const printStickersOption = document.getElementById('print-stickers-option');
+      const confirmModal = document.getElementById('confirm-modal');
+      const confirmTitle = document.getElementById('confirm-title');
+      const confirmMessage = document.getElementById('confirm-message');
+      const confirmClose = document.getElementById('confirm-close');
+      const confirmCancel = document.getElementById('confirm-cancel');
+      const confirmAction = document.getElementById('confirm-action');
       const eventCurrent = document.getElementById('event-current');
       const eventCurrentRoot = document.getElementById('event-current-root');
       const eventSelect = document.getElementById('event-select');
@@ -1753,10 +1904,11 @@
       boot();
 
       async function boot() {
-        state.preferredEventId = normalizeEventId(localStorage.getItem(SELECTED_EVENT_STORAGE_KEY) || '');
+        const storedEventId = readStoredSelectedEventId();
+        state.preferredEventId = storedEventId;
         const config = await fetchManagerConfig('');
 
-        applyManagerConfig(config);
+        applyManagerConfig(config, { persistEvent: !storedEventId });
 
         if (!config.firebaseConfig || !config.firebaseConfig.apiKey) {
           authMessage.textContent = 'Firebase public config is not configured in the environment.';
@@ -1785,6 +1937,9 @@
         clearMainPrints.addEventListener('click', () => clearPrintQueueAction('main', clearMainPrints));
         clearStickerPrints.addEventListener('click', () => clearPrintQueueAction('stickers', clearStickerPrints));
         clearProfileFilter.addEventListener('click', clearSelectedProfile);
+        raffleForm.addEventListener('submit', runRaffle);
+        raffleMode.addEventListener('change', syncRaffleModeVisibility);
+        raffleClearAll.addEventListener('click', confirmClearAllRaffles);
         zoomClose.addEventListener('click', closeStickerZoom);
         zoomResend.addEventListener('click', resendZoomSticker);
         zoomPrev.addEventListener('click', () => navigateStickerZoom(-1));
@@ -1794,6 +1949,9 @@
         printModalClose.addEventListener('click', closePrintDialog);
         printMainOption.addEventListener('click', () => confirmPrintChoice('main'));
         printStickersOption.addEventListener('click', () => confirmPrintChoice('stickers'));
+        confirmClose.addEventListener('click', closeConfirmDialog);
+        confirmCancel.addEventListener('click', closeConfirmDialog);
+        confirmAction.addEventListener('click', runConfirmDialogAction);
         compositionClose.addEventListener('click', closeCompositionEditor);
         compositionRegenerate.addEventListener('click', regenerateCompositionImage);
         compositionSaveDefault.addEventListener('click', saveCompositionAsDefault);
@@ -1826,6 +1984,11 @@
             closePrintDialog();
           }
         });
+        confirmModal.addEventListener('click', (event) => {
+          if (event.target === confirmModal) {
+            closeConfirmDialog();
+          }
+        });
         settingsModal.addEventListener('click', (event) => {
           if (event.target === settingsModal) {
             closeSettingsModal();
@@ -1855,6 +2018,9 @@
           if (event.key === 'Escape' && !printModal.classList.contains('hidden')) {
             closePrintDialog();
           }
+          if (event.key === 'Escape' && !confirmModal.classList.contains('hidden')) {
+            closeConfirmDialog();
+          }
           if (event.key === 'Escape' && !settingsModal.classList.contains('hidden')) {
             closeSettingsModal();
           }
@@ -1870,6 +2036,8 @@
             login();
           }
         });
+        setDefaultRaffleRange();
+        syncRaffleModeVisibility();
         refreshIcons();
 
         state.auth.onAuthStateChanged(async (user) => {
@@ -1878,11 +2046,13 @@
             managerPanel.classList.remove('hidden');
             logoutButton.classList.remove('hidden');
             settingsButton.classList.remove('hidden');
-            await loadAvailableEvents();
 
-            if (state.preferredEventId && state.preferredEventId !== state.eventId) {
-              await switchManagerEvent(state.preferredEventId);
-            } else {
+            try {
+              await applyStoredEventBeforeListeners();
+              await loadAvailableEvents();
+              startEventListeners();
+            } catch (error) {
+              eventMessage.textContent = error.message || 'Failed to load saved event.';
               startEventListeners();
             }
           } else {
@@ -1893,6 +2063,26 @@
             stopListeners();
           }
         });
+      }
+
+      async function applyStoredEventBeforeListeners() {
+        const storedEventId = readStoredSelectedEventId();
+
+        if (!storedEventId) {
+          return;
+        }
+
+        state.preferredEventId = storedEventId;
+
+        if (storedEventId === state.eventId) {
+          persistSelectedEventId(storedEventId);
+          return;
+        }
+
+        eventMessage.textContent = 'Loading saved event.';
+        const config = await fetchManagerConfig(storedEventId);
+        applyManagerConfig(config);
+        eventMessage.textContent = '';
       }
 
       async function login() {
@@ -1926,11 +2116,18 @@
         return payload;
       }
 
-      function applyManagerConfig(config) {
+      function applyManagerConfig(config, options = {}) {
+        const persistEvent = options.persistEvent !== false;
         state.managerConfig = config;
         state.eventId = config.eventId || state.eventId;
-        state.preferredEventId = state.eventId;
-        localStorage.setItem(SELECTED_EVENT_STORAGE_KEY, state.eventId);
+
+        if (persistEvent) {
+          state.preferredEventId = state.eventId;
+          persistSelectedEventId(state.eventId);
+        } else if (!state.preferredEventId) {
+          state.preferredEventId = state.eventId;
+        }
+
         applyMainCompositionConfig(config.mainComposition);
         document.getElementById('event-label').textContent = config.firestoreRoot || `/events/${state.eventId}`;
         eventCurrentRoot.textContent = config.firestoreRoot || `/events/${state.eventId}`;
@@ -2131,6 +2328,28 @@
         });
       }
 
+      function readStoredSelectedEventId() {
+        try {
+          return normalizeEventId(localStorage.getItem(SELECTED_EVENT_STORAGE_KEY) || '');
+        } catch (error) {
+          return '';
+        }
+      }
+
+      function persistSelectedEventId(eventId) {
+        const cleanEventId = normalizeEventId(eventId);
+
+        if (!cleanEventId) {
+          return;
+        }
+
+        try {
+          localStorage.setItem(SELECTED_EVENT_STORAGE_KEY, cleanEventId);
+        } catch (error) {
+          // Local storage can be unavailable in restricted browser contexts.
+        }
+      }
+
       async function switchManagerEvent(eventId) {
         const nextEventId = normalizeEventId(eventId);
 
@@ -2195,13 +2414,16 @@
         listenProfiles();
         listenImages();
         listenPrints();
+        loadRecentRaffles();
       }
 
       function resetEventScopedUi() {
         state.selectedProfile = null;
         state.printRows = [];
+        state.raffleRows = [];
         profilesCount.textContent = '0 participant(s)';
         imagesCount.textContent = '0 image(s)';
+        raffleCount.textContent = '0 raffle(s)';
         mainPrintCount.textContent = '0/0 item(s)';
         stickerPrintCount.textContent = '0/0 item(s)';
         metricPhotosGenerated.textContent = '0';
@@ -2212,10 +2434,12 @@
         imagesEl.innerHTML = '<div class="empty">Loading images.</div>';
         mainPrintsEl.innerHTML = '<div class="empty">Loading queue.</div>';
         stickerPrintsEl.innerHTML = '<div class="empty">Loading queue.</div>';
+        raffleResults.innerHTML = '<div class="empty">Loading raffles.</div>';
+        raffleMessage.textContent = '';
       }
 
       function setActiveTab(tab) {
-        const next = ['images', 'profiles', 'prints'].includes(tab) ? tab : 'images';
+        const next = ['images', 'profiles', 'prints', 'raffles'].includes(tab) ? tab : 'images';
 
         document.querySelectorAll('[data-tab]').forEach((button) => {
           button.classList.toggle('active', button.dataset.tab === next);
@@ -2223,6 +2447,7 @@
         document.getElementById('images-tab').classList.toggle('hidden', next !== 'images');
         document.getElementById('profiles-tab').classList.toggle('hidden', next !== 'profiles');
         document.getElementById('prints-tab').classList.toggle('hidden', next !== 'prints');
+        document.getElementById('raffles-tab').classList.toggle('hidden', next !== 'raffles');
       }
 
       function listenEventStats() {
@@ -2382,6 +2607,233 @@
         }
 
         refreshIcons();
+      }
+
+      function syncRaffleModeVisibility() {
+        const mode = raffleMode.value;
+        const isLastHours = mode === 'lastHours';
+        const isRange = mode === 'range';
+
+        raffleLastHoursField.classList.toggle('hidden', !isLastHours);
+        raffleStartField.classList.toggle('hidden', !isRange);
+        raffleEndField.classList.toggle('hidden', !isRange);
+        raffleLastHours.disabled = mode !== 'lastHours';
+        raffleStart.disabled = !isRange;
+        raffleEnd.disabled = !isRange;
+      }
+
+      function setDefaultRaffleRange() {
+        const now = new Date();
+        const start = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+        raffleStart.value = toDateTimeLocalValue(start);
+        raffleEnd.value = toDateTimeLocalValue(now);
+      }
+
+      async function loadRecentRaffles() {
+        raffleResults.innerHTML = '<div class="empty">Loading raffles.</div>';
+
+        try {
+          const payload = await apiGet('/api/photobooth/manager/raffles?limit=20');
+          state.raffleRows = payload.raffles || [];
+          renderRaffles();
+        } catch (error) {
+          raffleResults.innerHTML = `<div class="empty">${escapeHtml(error.message || 'Failed to load raffles.')}</div>`;
+        }
+      }
+
+      async function runRaffle(event) {
+        event.preventDefault();
+        raffleRun.disabled = true;
+        raffleMessage.textContent = 'Running raffle.';
+
+        try {
+          const mode = raffleMode.value || 'all';
+          const payload = await apiPost('/api/photobooth/manager/raffles', {
+            mode,
+            lastHours: raffleLastHours.value,
+            startAt: mode === 'range' && raffleStart.value ? new Date(raffleStart.value).toISOString() : '',
+            endAt: mode === 'range' && raffleEnd.value ? new Date(raffleEnd.value).toISOString() : '',
+            winnerCount: raffleWinnerCount.value,
+            excludePreviousWinners: raffleExcludePreviousWinners.checked,
+          });
+          state.raffleRows = [
+            { id: payload.raffle?.raffleId || '', data: payload.raffle || {} },
+            ...state.raffleRows.filter((row) => row.id !== payload.raffle?.raffleId),
+          ].slice(0, 20);
+          raffleMessage.textContent = payload.raffle?.eligibleCount
+            ? `Raffle complete: ${payload.raffle.winners?.length || 0} winner(s) from ${payload.raffle.eligibleCount} eligible participant(s).`
+            : 'No eligible participants for this raffle.';
+          renderRaffles();
+        } catch (error) {
+          raffleMessage.textContent = error.message || 'Failed to run raffle.';
+        } finally {
+          raffleRun.disabled = false;
+        }
+      }
+
+      function renderRaffles() {
+        raffleCount.textContent = `${state.raffleRows.length} raffle(s)`;
+        raffleResults.innerHTML = '';
+
+        if (!state.raffleRows.length) {
+          raffleResults.innerHTML = '<div class="empty">No raffles yet.</div>';
+          return;
+        }
+
+        state.raffleRows.forEach((row) => raffleResults.appendChild(renderRaffle(row.id, row.data)));
+        refreshIcons();
+      }
+
+      function renderRaffle(raffleId, item = {}) {
+        const article = document.createElement('article');
+        article.className = 'raffle-card';
+        const winners = Array.isArray(item.winners) ? item.winners : [];
+        const modeLabel = formatRaffleMode(item);
+        const notificationSummary = item.winnerNotifications || {};
+
+        article.innerHTML = `
+          <div class="package-title">
+            <div>
+              <h3>${escapeHtml(modeLabel)}</h3>
+              <p class="muted">Drawn at ${escapeHtml(formatDateTime(item.createdAt) || '-')}</p>
+            </div>
+            <div class="actions">
+              <span class="meta-pill">${escapeHtml(formatNumber(item.eligibleCount))} eligible</span>
+              <button class="warning icon-button" type="button" data-action="delete-raffle" aria-label="Clear raffle" title="Clear raffle">
+                <i data-lucide="trash-2"></i>
+              </button>
+            </div>
+          </div>
+          <div class="package-meta">
+            <span class="meta-pill">${escapeHtml(item.selectionStrategy || 'raffle')}</span>
+            ${item.excludePreviousWinners ? `<span class="meta-pill">Previous winners excluded: ${escapeHtml(formatNumber(item.excludedPreviousWinnerCount))}</span>` : '<span class="meta-pill">Previous winners allowed</span>'}
+            <span class="meta-pill">WhatsApp sent: ${escapeHtml(formatNumber(notificationSummary.sent))}</span>
+            ${notificationSummary.failed ? `<span class="meta-pill">Failed: ${escapeHtml(formatNumber(notificationSummary.failed))}</span>` : ''}
+            ${notificationSummary.skipped ? `<span class="meta-pill">Skipped: ${escapeHtml(formatNumber(notificationSummary.skipped))}</span>` : ''}
+          </div>
+          <div class="winner-list">
+            ${winners.length
+              ? winners.map((winner, index) => renderWinner(winner, index)).join('')
+              : '<div class="empty">No winners.</div>'}
+          </div>
+          <p class="muted">Random start: ${escapeHtml(String(item.randomStartKey ?? '-'))} · ${escapeHtml(raffleId || item.raffleId || '')}</p>
+        `;
+        article.querySelector('[data-action="delete-raffle"]').addEventListener('click', () => (
+          confirmDeleteRaffle(raffleId || item.raffleId || '')
+        ));
+
+        return article;
+      }
+
+      function formatRaffleMode(item = {}) {
+        if (item.mode === 'lastHours') {
+          return `Last ${item.lastHours || '?'} hour(s) · ${formatDateTime(item.startAt) || '-'} to ${formatDateTime(item.endAt) || '-'}`;
+        }
+
+        if (item.mode === 'range') {
+          return `Custom range · ${formatDateTime(item.startAt) || '-'} to ${formatDateTime(item.endAt) || '-'}`;
+        }
+
+        return 'All participants';
+      }
+
+      function renderWinner(winner = {}, index) {
+        const notification = winner.notification || {};
+        const notificationText = notification.status
+          ? `WhatsApp: ${notification.status}`
+          : 'WhatsApp: not sent';
+
+        return `
+          <div class="winner-card">
+            <span class="muted">Winner ${index + 1}</span>
+            <strong>${escapeHtml(winner.profileName || 'Participant')}</strong>
+            <span>${escapeHtml(winner.maskedPhone || maskPhone(winner.phoneNumber || winner.whatsAppAddress || ''))}</span>
+            <small class="muted">Last interaction: ${escapeHtml(formatDateTime(winner.lastRaffleInteractionAt) || '-')}</small>
+            <small class="muted">${escapeHtml(notificationText)}</small>
+          </div>
+        `;
+      }
+
+      function confirmClearAllRaffles() {
+        openConfirmDialog({
+          title: 'Clear all raffles',
+          message: 'This will permanently remove every raffle for the current event. No WhatsApp message will be sent.',
+          confirmLabel: 'Clear all',
+          action: clearAllRaffles,
+        });
+      }
+
+      function confirmDeleteRaffle(raffleId) {
+        if (!raffleId) {
+          return;
+        }
+
+        openConfirmDialog({
+          title: 'Clear raffle',
+          message: `This will permanently remove raffle ${raffleId}. No WhatsApp message will be sent.`,
+          confirmLabel: 'Clear raffle',
+          action: () => deleteRaffleAction(raffleId),
+        });
+      }
+
+      async function clearAllRaffles() {
+        const result = await apiPost('/api/photobooth/manager/raffles/clear', {});
+        state.raffleRows = [];
+        renderRaffles();
+        raffleMessage.textContent = `${formatNumber(result.deleted)} raffle(s) cleared.`;
+      }
+
+      async function deleteRaffleAction(raffleId) {
+        await apiPost(`/api/photobooth/manager/raffles/${encodeURIComponent(raffleId)}/delete`, {});
+        state.raffleRows = state.raffleRows.filter((row) => row.id !== raffleId && row.data?.raffleId !== raffleId);
+        renderRaffles();
+        raffleMessage.textContent = 'Raffle cleared.';
+      }
+
+      function openConfirmDialog(options = {}) {
+        state.confirmDialog = options;
+        confirmTitle.textContent = options.title || 'Confirm';
+        confirmMessage.textContent = options.message || '';
+        confirmAction.textContent = options.confirmLabel || 'Confirm';
+        confirmAction.disabled = false;
+        confirmCancel.disabled = false;
+        confirmModal.classList.remove('hidden');
+      }
+
+      function closeConfirmDialog() {
+        confirmModal.classList.add('hidden');
+        confirmTitle.textContent = 'Confirm';
+        confirmMessage.textContent = '';
+        confirmAction.textContent = 'Confirm';
+        confirmAction.disabled = false;
+        confirmCancel.disabled = false;
+        state.confirmDialog = null;
+      }
+
+      async function runConfirmDialogAction() {
+        const action = state.confirmDialog && state.confirmDialog.action;
+
+        if (typeof action !== 'function') {
+          closeConfirmDialog();
+          return;
+        }
+
+        confirmAction.disabled = true;
+        confirmCancel.disabled = true;
+
+        try {
+          await action();
+          closeConfirmDialog();
+        } catch (error) {
+          confirmMessage.textContent = error.message || 'Failed to complete action.';
+          confirmAction.disabled = false;
+          confirmCancel.disabled = false;
+        }
+      }
+
+      function toDateTimeLocalValue(date) {
+        const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+        return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
       }
 
       function matchesPrintStatus(item) {
@@ -3376,8 +3828,11 @@
       }
 
       function normalizeEventId(value) {
-        return String(value || '')
-          .trim()
+        const rawValue = String(value || '').trim();
+        const firestorePathMatch = rawValue.match(/^\/?events\/([^/]+)$/i);
+        const candidate = firestorePathMatch ? firestorePathMatch[1] : rawValue;
+
+        return candidate
           .replace(/[^a-zA-Z0-9_-]+/g, '-')
           .replace(/^-+|-+$/g, '')
           .slice(0, 120);
@@ -3481,6 +3936,22 @@
       function formatTimestamp(value) {
         const millis = timestampToMillis(value);
         return millis ? new Date(millis).toISOString() : '';
+      }
+
+      function formatDateTime(value) {
+        const millis = timestampToMillis(value);
+
+        if (!millis) {
+          return '';
+        }
+
+        return new Date(millis).toLocaleString(undefined, {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
       }
     </script>
   </body>

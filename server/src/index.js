@@ -68,6 +68,12 @@ const {
   normalizeTwilioEventConfig,
   runWithTwilioConfig,
 } = require('./services/twilioWhatsApp');
+const {
+  clearRaffles,
+  createRaffle,
+  deleteRaffle,
+  listRecentRaffles,
+} = require('./services/raffle');
 
 const app = express();
 const publicDir = path.resolve(__dirname, '..', 'public');
@@ -358,6 +364,85 @@ app.post('/api/photobooth/manager/event-config', async (req, res, next) => {
         whatsappWebhookUrl: buildWhatsappWebhookUrl(req, getEventId()),
         firebaseConfig: getFirebasePublicConfig(),
       });
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/photobooth/manager/raffles', async (req, res, next) => {
+  try {
+    await verifyFirebaseIdToken(req);
+
+    await runWithRequestEvent(req, async () => {
+      const limit = readInteger(req.query && req.query.limit, 20, 1, 50);
+      const raffles = await listRecentRaffles(limit);
+
+      res.json({
+        ok: true,
+        eventId: getEventId(),
+        raffles,
+      });
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/photobooth/manager/raffles', async (req, res, next) => {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+
+    await runWithRequestEvent(req, async () => {
+      const result = await createRaffle({
+        mode: cleanString(req.body && req.body.mode, 40) || 'all',
+        startAt: cleanString(req.body && req.body.startAt, 80),
+        endAt: cleanString(req.body && req.body.endAt, 80),
+        lastHours: req.body && req.body.lastHours,
+        winnerCount: req.body && req.body.winnerCount,
+        excludePreviousWinners: !(req.body && req.body.excludePreviousWinners === false),
+        requestedBy: user.email || user.uid,
+      });
+
+      res.status(201).json(result);
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/photobooth/manager/raffles/clear', async (req, res, next) => {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+
+    await runWithRequestEvent(req, async () => {
+      const result = await clearRaffles({
+        requestedBy: user.email || user.uid,
+      });
+
+      res.json(result);
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/photobooth/manager/raffles/:raffleId/delete', async (req, res, next) => {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+    const raffleId = cleanString(req.params.raffleId, 160);
+
+    if (!raffleId) {
+      throw clientError('missing_raffle_id', 'Informe o sorteio para limpar.');
+    }
+
+    await runWithRequestEvent(req, async () => {
+      const result = await deleteRaffle({
+        raffleId,
+        requestedBy: user.email || user.uid,
+      });
+
+      res.json(result);
     });
   } catch (error) {
     next(error);

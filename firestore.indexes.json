@@ -1,0 +1,19 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "profiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "raffleRandomKey",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastRaffleInteractionAt",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
