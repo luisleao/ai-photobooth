@@ -1431,6 +1431,7 @@ async function upsertProfile(messageData = {}) {
     ...(snap.exists ? {} : {
       createdAt: now,
       unlimited: false,
+      raffleExcluded: false,
       stats: {
         imagesSubmitted: 0,
         photosGenerated: 0,
@@ -1450,6 +1451,7 @@ async function upsertProfile(messageData = {}) {
       },
     }),
     ...(existingData.unlimited === undefined ? { unlimited: false } : {}),
+    ...(existingData.raffleExcluded === undefined ? { raffleExcluded: false } : {}),
     ...(Number.isFinite(existingData.raffleRandomKey) ? {} : {
       raffleRandomKey: profile.raffleRandomKey,
     }),

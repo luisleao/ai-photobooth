@@ -36,7 +36,8 @@
 
       button,
       input,
-      select {
+      select,
+      textarea {
         font: inherit;
       }
 
@@ -121,12 +122,18 @@
       }
 
       input,
-      select {
+      select,
+      textarea {
         width: 100%;
         border: 1px solid var(--line);
         border-radius: 6px;
         padding: 11px 12px;
         background: #fff;
+      }
+
+      textarea {
+        min-height: 112px;
+        resize: vertical;
       }
 
       header {
@@ -431,6 +438,7 @@
 
       .participant-actions {
         display: flex;
+        gap: 8px;
         justify-content: flex-end;
       }
 
@@ -442,7 +450,6 @@
 
       .participant-actions .icon-button {
         width: 40px;
-        margin-left: auto;
         padding: 0;
       }
 
@@ -457,6 +464,22 @@
       .scope-toolbar small {
         width: 100%;
         text-align: right;
+      }
+
+      .profile-filters {
+        align-items: end;
+      }
+
+      .compact-filter {
+        display: grid;
+        gap: 4px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .compact-filter select {
+        min-width: 138px;
       }
 
       .grid {
@@ -922,9 +945,28 @@
         min-height: 42px;
       }
 
+      .raffle-message-field {
+        grid-column: 1 / -1;
+      }
+
       .raffle-message {
         min-height: 20px;
         color: var(--muted);
+      }
+
+      .raffle-eligibility {
+        min-height: 20px;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .raffle-eligibility.ready {
+        color: var(--green);
+      }
+
+      .raffle-eligibility.warning,
+      .raffle-eligibility.error {
+        color: var(--red);
       }
 
       .raffle-results {
@@ -1325,7 +1367,25 @@
         <div class="tab-panel hidden" id="profiles-tab">
           <div class="toolbar">
             <h2>Participants</h2>
-            <small id="profiles-count">0 participant(s)</small>
+            <div class="scope-toolbar profile-filters">
+              <small id="profiles-count">0 participant(s)</small>
+              <label class="compact-filter">
+                Raffle
+                <select id="profile-raffle-filter">
+                  <option value="all">All</option>
+                  <option value="enabled">In raffle</option>
+                  <option value="excluded">Out of raffle</option>
+                </select>
+              </label>
+              <label class="compact-filter">
+                Generation
+                <select id="profile-unlimited-filter">
+                  <option value="all">All</option>
+                  <option value="limited">Limited</option>
+                  <option value="unlimited">Unlimited</option>
+                </select>
+              </label>
+            </div>
           </div>
           <div class="participants" id="profiles"></div>
         </div>
@@ -1415,8 +1475,15 @@
                 <input id="raffle-exclude-previous-winners" type="checkbox" checked />
                 Exclude previous winners
               </label>
+              <label class="raffle-message-field">
+                Winner message
+                <textarea id="raffle-winner-message" rows="4">Parabéns, você foi sorteado(a)!
+
+Apresente esta mensagem para uma pessoa da Twilio para retirar seu brinde.</textarea>
+              </label>
               <button class="success" id="raffle-run" type="submit">Run Raffle</button>
             </form>
+            <p class="raffle-eligibility" id="raffle-eligibility">Eligibility will appear here.</p>
             <p class="raffle-message" id="raffle-message"></p>
             <div class="raffle-results" id="raffle-results"></div>
           </div>
@@ -1749,6 +1816,8 @@
       const MIN_SUBJECT_SIZE = 100;
       const SUBJECT_ASPECT_RATIO = 2 / 3;
       const SELECTED_EVENT_STORAGE_KEY = 'ai-photobooth.manager.eventId';
+      const RAFFLE_ELIGIBILITY_DEBOUNCE_MS = 350;
+      const DEFAULT_RAFFLE_WINNER_MESSAGE = 'Parabéns, você foi sorteado(a)!\n\nApresente esta mensagem para uma pessoa da Twilio para retirar seu brinde.';
 
       const state = {
         eventId: '',
@@ -1761,8 +1830,13 @@
         imageUnsubscribe: null,
         profileUnsubscribe: null,
         printUnsubscribe: null,
+        profileRows: [],
+        profileRaffleFilter: 'all',
+        profileUnlimitedFilter: 'all',
         printRows: [],
         raffleRows: [],
+        raffleEligibilityTimer: null,
+        raffleEligibilityRequestId: 0,
         printStatusFilter: 'open',
         zoomSticker: null,
         zoomStickerItems: [],
@@ -1795,6 +1869,8 @@
       const profilesCount = document.getElementById('profiles-count');
       const imagesCount = document.getElementById('images-count');
       const clearProfileFilter = document.getElementById('clear-profile-filter');
+      const profileRaffleFilter = document.getElementById('profile-raffle-filter');
+      const profileUnlimitedFilter = document.getElementById('profile-unlimited-filter');
       const settingsButton = document.getElementById('settings-button');
       const mainPrintCount = document.getElementById('main-print-count');
       const stickerPrintCount = document.getElementById('sticker-print-count');
@@ -1811,8 +1887,10 @@
       const raffleEnd = document.getElementById('raffle-end');
       const raffleWinnerCount = document.getElementById('raffle-winner-count');
       const raffleExcludePreviousWinners = document.getElementById('raffle-exclude-previous-winners');
+      const raffleWinnerMessage = document.getElementById('raffle-winner-message');
       const raffleRun = document.getElementById('raffle-run');
       const raffleClearAll = document.getElementById('raffle-clear-all');
+      const raffleEligibility = document.getElementById('raffle-eligibility');
       const raffleMessage = document.getElementById('raffle-message');
       const raffleResults = document.getElementById('raffle-results');
       const raffleCount = document.getElementById('raffle-count');
@@ -1930,6 +2008,14 @@
         eventSelect.addEventListener('change', () => switchManagerEvent(eventSelect.value));
         eventRefresh.addEventListener('click', loadAvailableEvents);
         eventCreateForm.addEventListener('submit', createManagerEvent);
+        profileRaffleFilter.addEventListener('change', () => {
+          state.profileRaffleFilter = profileRaffleFilter.value;
+          renderProfiles();
+        });
+        profileUnlimitedFilter.addEventListener('change', () => {
+          state.profileUnlimitedFilter = profileUnlimitedFilter.value;
+          renderProfiles();
+        });
         printStatusFilter.addEventListener('change', () => {
           state.printStatusFilter = printStatusFilter.value;
           renderPrintLists();
@@ -1938,7 +2024,20 @@
         clearStickerPrints.addEventListener('click', () => clearPrintQueueAction('stickers', clearStickerPrints));
         clearProfileFilter.addEventListener('click', clearSelectedProfile);
         raffleForm.addEventListener('submit', runRaffle);
-        raffleMode.addEventListener('change', syncRaffleModeVisibility);
+        raffleMode.addEventListener('change', () => {
+          syncRaffleModeVisibility();
+          scheduleRaffleEligibilityRefresh();
+        });
+        [
+          raffleLastHours,
+          raffleStart,
+          raffleEnd,
+          raffleWinnerCount,
+          raffleExcludePreviousWinners,
+        ].forEach((input) => {
+          input.addEventListener('input', () => scheduleRaffleEligibilityRefresh());
+          input.addEventListener('change', () => scheduleRaffleEligibilityRefresh());
+        });
         raffleClearAll.addEventListener('click', confirmClearAllRaffles);
         zoomClose.addEventListener('click', closeStickerZoom);
         zoomResend.addEventListener('click', resendZoomSticker);
@@ -2037,6 +2136,7 @@
           }
         });
         setDefaultRaffleRange();
+        setDefaultRaffleWinnerMessage();
         syncRaffleModeVisibility();
         refreshIcons();
 
@@ -2415,10 +2515,12 @@
         listenImages();
         listenPrints();
         loadRecentRaffles();
+        scheduleRaffleEligibilityRefresh(0);
       }
 
       function resetEventScopedUi() {
         state.selectedProfile = null;
+        state.profileRows = [];
         state.printRows = [];
         state.raffleRows = [];
         profilesCount.textContent = '0 participant(s)';
@@ -2436,6 +2538,7 @@
         stickerPrintsEl.innerHTML = '<div class="empty">Loading queue.</div>';
         raffleResults.innerHTML = '<div class="empty">Loading raffles.</div>';
         raffleMessage.textContent = '';
+        setRaffleEligibilityStatus('Eligibility will appear here.');
       }
 
       function setActiveTab(tab) {
@@ -2490,19 +2593,57 @@
           .orderBy('updatedAt', 'desc')
           .limit(120)
           .onSnapshot((snapshot) => {
-            profilesCount.textContent = `${snapshot.size} participant(s)`;
-            profilesEl.innerHTML = '';
-
-            if (!snapshot.size) {
-              profilesEl.innerHTML = '<div class="empty">No participants found.</div>';
-              return;
-            }
-
-            snapshot.forEach((doc) => profilesEl.appendChild(renderProfile(doc.id, doc.data())));
-            refreshIcons();
+            state.profileRows = snapshot.docs.map((doc) => ({
+              id: doc.id,
+              data: doc.data() || {},
+            }));
+            renderProfiles();
           }, (error) => {
             profilesEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
           });
+      }
+
+      function renderProfiles() {
+        const rows = state.profileRows || [];
+        const filteredRows = rows.filter((row) => matchesProfileFilters(row.data || {}));
+
+        profilesCount.textContent = rows.length === filteredRows.length
+          ? `${rows.length} participant(s)`
+          : `${filteredRows.length} of ${rows.length} participant(s)`;
+        profilesEl.innerHTML = '';
+
+        if (!rows.length) {
+          profilesEl.innerHTML = '<div class="empty">No participants found.</div>';
+          return;
+        }
+
+        if (!filteredRows.length) {
+          profilesEl.innerHTML = '<div class="empty">No participants match the current filters.</div>';
+          return;
+        }
+
+        filteredRows.forEach((row) => profilesEl.appendChild(renderProfile(row.id, row.data)));
+        refreshIcons();
+      }
+
+      function matchesProfileFilters(item = {}) {
+        if (state.profileRaffleFilter === 'enabled' && item.raffleExcluded === true) {
+          return false;
+        }
+
+        if (state.profileRaffleFilter === 'excluded' && item.raffleExcluded !== true) {
+          return false;
+        }
+
+        if (state.profileUnlimitedFilter === 'limited' && item.unlimited === true) {
+          return false;
+        }
+
+        if (state.profileUnlimitedFilter === 'unlimited' && item.unlimited !== true) {
+          return false;
+        }
+
+        return true;
       }
 
       function listenImages() {
@@ -2622,11 +2763,123 @@
         raffleEnd.disabled = !isRange;
       }
 
+      function scheduleRaffleEligibilityRefresh(delay = RAFFLE_ELIGIBILITY_DEBOUNCE_MS) {
+        if (state.raffleEligibilityTimer) {
+          clearTimeout(state.raffleEligibilityTimer);
+        }
+
+        state.raffleEligibilityTimer = setTimeout(() => {
+          state.raffleEligibilityTimer = null;
+          refreshRaffleEligibility();
+        }, delay);
+      }
+
+      async function refreshRaffleEligibility() {
+        if (!state.auth || !state.auth.currentUser || !state.eventId) {
+          setRaffleEligibilityStatus('Eligibility will appear here.');
+          return;
+        }
+
+        let payload;
+
+        try {
+          payload = getRaffleEligibilityPayload();
+        } catch (error) {
+          setRaffleEligibilityStatus(error.message || 'Adjust raffle parameters to preview eligibility.', 'warning');
+          return;
+        }
+
+        const requestId = state.raffleEligibilityRequestId + 1;
+        state.raffleEligibilityRequestId = requestId;
+        setRaffleEligibilityStatus('Checking eligibility.');
+
+        try {
+          const response = await apiPost('/api/photobooth/manager/raffles/eligibility', payload, { silent: true });
+
+          if (requestId !== state.raffleEligibilityRequestId) {
+            return;
+          }
+
+          renderRaffleEligibility(response.eligibility || {});
+        } catch (error) {
+          if (requestId !== state.raffleEligibilityRequestId) {
+            return;
+          }
+
+          setRaffleEligibilityStatus(error.message || 'Could not preview eligibility.', 'error');
+        }
+      }
+
+      function getRaffleEligibilityPayload() {
+        const mode = raffleMode.value || 'all';
+        const payload = {
+          mode,
+          lastHours: raffleLastHours.value,
+          startAt: '',
+          endAt: '',
+          winnerCount: raffleWinnerCount.value,
+          excludePreviousWinners: raffleExcludePreviousWinners.checked,
+        };
+
+        if (mode === 'range') {
+          if (!raffleStart.value || !raffleEnd.value) {
+            throw new Error('Select start and end to preview eligibility.');
+          }
+
+          payload.startAt = new Date(raffleStart.value).toISOString();
+          payload.endAt = new Date(raffleEnd.value).toISOString();
+        }
+
+        return payload;
+      }
+
+      function renderRaffleEligibility(item = {}) {
+        const eligibleCount = Number(item.eligibleCount || 0);
+        const rawEligibleCount = Number(item.rawEligibleCount || 0);
+        const winnerCount = Number(item.winnerCount || readNumber(raffleWinnerCount.value, 1));
+        const parts = [];
+
+        if (eligibleCount <= 0) {
+          parts.push('No eligible participants for these settings.');
+        } else if (eligibleCount < winnerCount) {
+          parts.push(`${formatNumber(eligibleCount)} eligible, but ${formatNumber(winnerCount)} winner(s) requested.`);
+        } else {
+          parts.push(`${formatNumber(eligibleCount)} eligible for ${formatNumber(winnerCount)} winner(s).`);
+        }
+
+        if (rawEligibleCount !== eligibleCount) {
+          parts.push(`${formatNumber(rawEligibleCount)} in selected scope.`);
+        }
+
+        if (item.excludedPreviousWinnerCount) {
+          parts.push(`${formatNumber(item.excludedPreviousWinnerCount)} previous winner(s) excluded.`);
+        }
+
+        if (item.excludedManualCount) {
+          parts.push(`${formatNumber(item.excludedManualCount)} manually excluded.`);
+        }
+
+        setRaffleEligibilityStatus(parts.join(' '), item.canRun ? 'ready' : 'warning');
+      }
+
+      function setRaffleEligibilityStatus(message, status = '') {
+        raffleEligibility.textContent = message || '';
+        raffleEligibility.classList.toggle('ready', status === 'ready');
+        raffleEligibility.classList.toggle('warning', status === 'warning');
+        raffleEligibility.classList.toggle('error', status === 'error');
+      }
+
       function setDefaultRaffleRange() {
         const now = new Date();
         const start = new Date(now.getTime() - 4 * 60 * 60 * 1000);
         raffleStart.value = toDateTimeLocalValue(start);
         raffleEnd.value = toDateTimeLocalValue(now);
+      }
+
+      function setDefaultRaffleWinnerMessage() {
+        if (!raffleWinnerMessage.value.trim()) {
+          raffleWinnerMessage.value = DEFAULT_RAFFLE_WINNER_MESSAGE;
+        }
       }
 
       async function loadRecentRaffles() {
@@ -2647,15 +2900,9 @@
         raffleMessage.textContent = 'Running raffle.';
 
         try {
-          const mode = raffleMode.value || 'all';
-          const payload = await apiPost('/api/photobooth/manager/raffles', {
-            mode,
-            lastHours: raffleLastHours.value,
-            startAt: mode === 'range' && raffleStart.value ? new Date(raffleStart.value).toISOString() : '',
-            endAt: mode === 'range' && raffleEnd.value ? new Date(raffleEnd.value).toISOString() : '',
-            winnerCount: raffleWinnerCount.value,
-            excludePreviousWinners: raffleExcludePreviousWinners.checked,
-          });
+          const rafflePayload = getRaffleEligibilityPayload();
+          rafflePayload.winnerMessage = raffleWinnerMessage.value;
+          const payload = await apiPost('/api/photobooth/manager/raffles', rafflePayload);
           state.raffleRows = [
             { id: payload.raffle?.raffleId || '', data: payload.raffle || {} },
             ...state.raffleRows.filter((row) => row.id !== payload.raffle?.raffleId),
@@ -2664,6 +2911,7 @@
             ? `Raffle complete: ${payload.raffle.winners?.length || 0} winner(s) from ${payload.raffle.eligibleCount} eligible participant(s).`
             : 'No eligible participants for this raffle.';
           renderRaffles();
+          scheduleRaffleEligibilityRefresh(0);
         } catch (error) {
           raffleMessage.textContent = error.message || 'Failed to run raffle.';
         } finally {
@@ -2707,6 +2955,7 @@
           <div class="package-meta">
             <span class="meta-pill">${escapeHtml(item.selectionStrategy || 'raffle')}</span>
             ${item.excludePreviousWinners ? `<span class="meta-pill">Previous winners excluded: ${escapeHtml(formatNumber(item.excludedPreviousWinnerCount))}</span>` : '<span class="meta-pill">Previous winners allowed</span>'}
+            ${item.excludedManualCount ? `<span class="meta-pill">Manually excluded: ${escapeHtml(formatNumber(item.excludedManualCount))}</span>` : ''}
             <span class="meta-pill">WhatsApp sent: ${escapeHtml(formatNumber(notificationSummary.sent))}</span>
             ${notificationSummary.failed ? `<span class="meta-pill">Failed: ${escapeHtml(formatNumber(notificationSummary.failed))}</span>` : ''}
             ${notificationSummary.skipped ? `<span class="meta-pill">Skipped: ${escapeHtml(formatNumber(notificationSummary.skipped))}</span>` : ''}
@@ -2781,6 +3030,7 @@
         state.raffleRows = [];
         renderRaffles();
         raffleMessage.textContent = `${formatNumber(result.deleted)} raffle(s) cleared.`;
+        scheduleRaffleEligibilityRefresh(0);
       }
 
       async function deleteRaffleAction(raffleId) {
@@ -2788,6 +3038,7 @@
         state.raffleRows = state.raffleRows.filter((row) => row.id !== raffleId && row.data?.raffleId !== raffleId);
         renderRaffles();
         raffleMessage.textContent = 'Raffle cleared.';
+        scheduleRaffleEligibilityRefresh(0);
       }
 
       function openConfirmDialog(options = {}) {
@@ -2983,6 +3234,7 @@
         const generation = stats.generation || {};
         const name = item.profileName || item.whatsappProfile?.profileName || 'Participant';
         const unlimited = item.unlimited === true ? ' · unlimited' : '';
+        const raffleExcluded = item.raffleExcluded === true ? ' · out of raffle' : '';
         const isSelected = state.selectedProfile && state.selectedProfile.id === profileId;
 
         if (isSelected) {
@@ -2992,7 +3244,7 @@
         article.innerHTML = `
           <div>
             <strong>${escapeHtml(name)}</strong>
-            <span class="muted">${escapeHtml(maskPhone(item.phoneNumber || profileId))}${escapeHtml(unlimited)}</span>
+            <span class="muted">${escapeHtml(maskPhone(item.phoneNumber || profileId))}${escapeHtml(unlimited)}${escapeHtml(raffleExcluded)}</span>
           </div>
           <div class="participant-stat">
             ${formatNumber(stats.imagesSubmitted)}
@@ -3025,13 +3277,28 @@
             >
               <i data-lucide="${item.unlimited === true ? 'ban' : 'infinity'}"></i>
             </button>
+            <button
+              type="button"
+              class="${item.raffleExcluded === true ? 'success' : 'warning'} icon-button"
+              data-action="toggle-raffle"
+              aria-pressed="${item.raffleExcluded === true ? 'true' : 'false'}"
+              aria-label="${item.raffleExcluded === true ? 'Add to raffle' : 'Remove from raffle'}"
+              title="${item.raffleExcluded === true ? 'Add to raffle' : 'Remove from raffle'}"
+            >
+              <i data-lucide="${item.raffleExcluded === true ? 'user-check' : 'user-x'}"></i>
+            </button>
           </div>
         `;
         const unlimitedButton = article.querySelector('[data-action="toggle-unlimited"]');
+        const raffleButton = article.querySelector('[data-action="toggle-raffle"]');
 
         unlimitedButton.addEventListener('click', (event) => {
           event.stopPropagation();
           toggleProfileUnlimited(profileId, item.unlimited !== true);
+        });
+        raffleButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          toggleProfileRaffleExcluded(profileId, item.raffleExcluded !== true);
         });
         article.addEventListener('click', () => selectProfileImages(profileId, name, item.phoneNumber || profileId));
         article.addEventListener('keydown', (event) => {
@@ -3052,6 +3319,13 @@
         await apiPost(
           `/api/photobooth/manager/profiles/${encodeURIComponent(profileId)}/unlimited`,
           { unlimited },
+        );
+      }
+
+      async function toggleProfileRaffleExcluded(profileId, raffleExcluded) {
+        await apiPost(
+          `/api/photobooth/manager/profiles/${encodeURIComponent(profileId)}/raffle-excluded`,
+          { raffleExcluded },
         );
       }
 
@@ -3720,7 +3994,9 @@
         const payload = await response.json().catch(() => ({ message: response.statusText }));
 
         if (!response.ok) {
-          alert(payload.message || 'Failed to run action.');
+          if (!options.silent) {
+            alert(payload.message || 'Failed to run action.');
+          }
           throw new Error(payload.message || 'Failed to run action.');
         }
 

@@ -32,27 +32,37 @@ async function createRaffle({
   lastHours,
   winnerCount = DEFAULT_WINNER_COUNT,
   excludePreviousWinners = true,
+  winnerMessage = '',
   requestedBy = '',
 }) {
-  const window = resolveRaffleWindow({
+  const eligibility = await resolveRaffleEligibility({
     mode,
     startAt,
     endAt,
     lastHours,
+    winnerCount,
+    excludePreviousWinners,
   });
-  const cleanWinnerCount = clampInteger(winnerCount, DEFAULT_WINNER_COUNT, MAX_WINNER_COUNT);
-  const shouldExcludePreviousWinners = excludePreviousWinners !== false;
-  const excludedWinnerIds = shouldExcludePreviousWinners
-    ? await getPreviousWinnerProfileIds()
-    : new Set();
+  const {
+    window,
+    cleanWinnerCount,
+    shouldExcludePreviousWinners,
+    rawEligibleCount,
+    excludedPreviousWinnerIds,
+    manuallyExcludedIds,
+    excludedProfileIds,
+    excludedEligibleCount,
+    eligibleCount,
+  } = eligibility;
+  const cleanWinnerMessage = normalizeWinnerMessage(winnerMessage);
   const randomStartKey = createRaffleRandomKey();
-  const rawEligibleCount = await countEligibleProfiles(window);
-  const excludedEligibleCount = excludedWinnerIds.size
-    ? await countExcludedEligibleProfiles(window, excludedWinnerIds)
-    : 0;
-  const eligibleCount = Math.max(0, rawEligibleCount - excludedEligibleCount);
-  const randomKeyEligibleCount = rawEligibleCount > 0
-    ? await countRandomKeyEligibleProfiles(window, excludedWinnerIds)
+  const canUseRandomKeySelection = (
+    window.mode === 'all'
+    && eligibleCount > 0
+    && excludedProfileIds.size === 0
+  );
+  const randomKeyEligibleCount = canUseRandomKeySelection
+    ? await countRandomKeyEligibleProfiles(window)
     : 0;
 
   assertEnoughEligibleProfiles({
@@ -63,21 +73,20 @@ async function createRaffle({
   });
 
   const useRandomKeySelection = (
-    eligibleCount > 0
+    canUseRandomKeySelection
     && randomKeyEligibleCount >= eligibleCount
-    && excludedWinnerIds.size === 0
   );
   const winners = useRandomKeySelection
     ? await pickWinnersByRandomKey({
       window,
       randomStartKey,
       winnerCount: cleanWinnerCount,
-      excludedWinnerIds,
+      excludedWinnerIds: excludedProfileIds,
     })
     : await pickWinnersByReservoir({
       window,
       winnerCount: cleanWinnerCount,
-      excludedWinnerIds,
+      excludedWinnerIds: excludedProfileIds,
     });
 
   assertEnoughSelectedWinners({
@@ -99,7 +108,10 @@ async function createRaffle({
     eligibleCount,
     rawEligibleCount,
     excludePreviousWinners: shouldExcludePreviousWinners,
-    excludedPreviousWinnerCount: excludedEligibleCount,
+    excludedPreviousWinnerCount: excludedPreviousWinnerIds.size,
+    excludedManualCount: manuallyExcludedIds.size,
+    excludedEligibleCount,
+    winnerMessage: cleanWinnerMessage || '',
     randomKeyEligibleCount,
     randomStartKey,
     randomKeyMax: RAFFLE_RANDOM_KEY_MAX,
@@ -116,6 +128,7 @@ async function createRaffle({
     ? await notifyRaffleWinners({
       raffleId: raffleRef.id,
       winners,
+      winnerMessage: cleanWinnerMessage,
     })
     : createEmptyNotificationSummary();
   const notifiedWinners = mergeWinnerNotifications(winners, notifications.results);
@@ -133,6 +146,106 @@ async function createRaffle({
   return {
     ok: true,
     raffle: raffleRecord,
+  };
+}
+
+async function previewRaffleEligibility({
+  mode = 'all',
+  startAt,
+  endAt,
+  lastHours,
+  winnerCount = DEFAULT_WINNER_COUNT,
+  excludePreviousWinners = true,
+}) {
+  const eligibility = await resolveRaffleEligibility({
+    mode,
+    startAt,
+    endAt,
+    lastHours,
+    winnerCount,
+    excludePreviousWinners,
+  });
+
+  return {
+    ok: true,
+    eventId: getEventId(),
+    eligibility: serializeRaffleEligibility(eligibility),
+  };
+}
+
+async function resolveRaffleEligibility({
+  mode = 'all',
+  startAt,
+  endAt,
+  lastHours,
+  winnerCount = DEFAULT_WINNER_COUNT,
+  excludePreviousWinners = true,
+}) {
+  const window = resolveRaffleWindow({
+    mode,
+    startAt,
+    endAt,
+    lastHours,
+  });
+  const cleanWinnerCount = clampInteger(winnerCount, DEFAULT_WINNER_COUNT, MAX_WINNER_COUNT);
+  const shouldExcludePreviousWinners = excludePreviousWinners !== false;
+  const rawEligibleCount = await countEligibleProfiles(window);
+  const previousWinnerIds = shouldExcludePreviousWinners
+    ? await getPreviousWinnerProfileIds()
+    : new Set();
+  const excludedPreviousWinnerIds = previousWinnerIds.size
+    ? await getEligibleProfileIdsFromSet(window, previousWinnerIds)
+    : new Set();
+  const manuallyExcludedIds = await getManuallyExcludedProfileIds(window);
+  const excludedProfileIds = new Set([
+    ...excludedPreviousWinnerIds,
+    ...manuallyExcludedIds,
+  ]);
+  const excludedEligibleCount = excludedProfileIds.size;
+  const eligibleCount = Math.max(0, rawEligibleCount - excludedEligibleCount);
+
+  return {
+    window,
+    cleanWinnerCount,
+    shouldExcludePreviousWinners,
+    rawEligibleCount,
+    previousWinnerCount: previousWinnerIds.size,
+    excludedPreviousWinnerIds,
+    manuallyExcludedIds,
+    excludedProfileIds,
+    excludedEligibleCount,
+    eligibleCount,
+  };
+}
+
+function serializeRaffleEligibility(eligibility) {
+  const {
+    window,
+    cleanWinnerCount,
+    shouldExcludePreviousWinners,
+    rawEligibleCount,
+    previousWinnerCount,
+    excludedPreviousWinnerIds,
+    manuallyExcludedIds,
+    excludedEligibleCount,
+    eligibleCount,
+  } = eligibility;
+
+  return {
+    mode: window.mode,
+    startAt: window.startAt || null,
+    endAt: window.endAt || null,
+    lastHours: window.lastHours || null,
+    winnerCount: cleanWinnerCount,
+    rawEligibleCount,
+    eligibleCount,
+    excludePreviousWinners: shouldExcludePreviousWinners,
+    previousWinnerCount,
+    excludedPreviousWinnerCount: excludedPreviousWinnerIds.size,
+    excludedManualCount: manuallyExcludedIds.size,
+    excludedEligibleCount,
+    shortage: Math.max(0, cleanWinnerCount - eligibleCount),
+    canRun: eligibleCount > 0 && eligibleCount >= cleanWinnerCount,
   };
 }
 
@@ -206,9 +319,14 @@ function formatWinnerCount(count) {
 async function notifyRaffleWinners({
   raffleId,
   winners,
+  winnerMessage = '',
 }) {
   const t = await getCurrentEventTranslator();
   const twilioConfig = await loadCurrentEventTwilioConfig();
+  const messageBody = formatWinnerMessage(
+    normalizeWinnerMessage(winnerMessage) || t('raffleWinner', { raffleId }),
+    { raffleId },
+  );
   const results = [];
 
   for (const winner of winners) {
@@ -226,7 +344,7 @@ async function notifyRaffleWinners({
     try {
       const message = await runWithTwilioConfig(twilioConfig, () => sendWhatsAppText(
         toWhatsAppAddress(destination),
-        t('raffleWinner', { raffleId }),
+        messageBody,
       ));
 
       results.push({
@@ -251,6 +369,21 @@ async function notifyRaffleWinners({
     summary: summarizeNotificationResults(results),
     results,
   };
+}
+
+function normalizeWinnerMessage(value) {
+  return String(value || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim()
+    .slice(0, 1200);
+}
+
+function formatWinnerMessage(template, vars = {}) {
+  return Object.entries(vars).reduce((message, [name, value]) => (
+    message.replaceAll(`{${name}}`, String(value))
+  ), template);
 }
 
 function mergeWinnerNotifications(winners, results) {
@@ -387,23 +520,40 @@ async function countRandomKeyEligibleProfiles(window) {
   return Number(data.count || 0);
 }
 
-async function countExcludedEligibleProfiles(window, excludedWinnerIds) {
-  if (!excludedWinnerIds.size) {
-    return 0;
+async function getEligibleProfileIdsFromSet(window, profileIds) {
+  const eligibleIds = new Set();
+
+  if (!profileIds.size) {
+    return eligibleIds;
   }
 
-  let count = 0;
   const profilesRef = getEventRef().collection('profiles');
 
-  for (const profileId of excludedWinnerIds) {
+  for (const profileId of profileIds) {
     const snap = await profilesRef.doc(profileId).get();
 
     if (snap.exists && isProfileEligibleForWindow(snap.data() || {}, window)) {
-      count += 1;
+      eligibleIds.add(profileId);
     }
   }
 
-  return count;
+  return eligibleIds;
+}
+
+async function getManuallyExcludedProfileIds(window) {
+  const excludedIds = new Set();
+  const snap = await getEventRef()
+    .collection('profiles')
+    .where('raffleExcluded', '==', true)
+    .get();
+
+  snap.forEach((doc) => {
+    if (isProfileEligibleForWindow(doc.data() || {}, window)) {
+      excludedIds.add(doc.id);
+    }
+  });
+
+  return excludedIds;
 }
 
 async function getPreviousWinnerProfileIds() {
@@ -495,7 +645,7 @@ async function pickWinnersByReservoir({
   let seenCount = 0;
   let query = buildReservoirProfilesQuery(window).limit(RESERVOIR_PAGE_SIZE);
 
-  while (winners.length < winnerCount || seenCount >= winnerCount) {
+  while (true) {
     const snap = await query.get();
 
     if (snap.empty) {
@@ -731,4 +881,5 @@ module.exports = {
   createRaffleRandomKey,
   deleteRaffle,
   listRecentRaffles,
+  previewRaffleEligibility,
 };

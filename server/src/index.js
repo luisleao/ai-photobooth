@@ -73,6 +73,7 @@ const {
   createRaffle,
   deleteRaffle,
   listRecentRaffles,
+  previewRaffleEligibility,
 } = require('./services/raffle');
 
 const app = express();
@@ -389,6 +390,27 @@ app.get('/api/photobooth/manager/raffles', async (req, res, next) => {
   }
 });
 
+app.post('/api/photobooth/manager/raffles/eligibility', async (req, res, next) => {
+  try {
+    await verifyFirebaseIdToken(req);
+
+    await runWithRequestEvent(req, async () => {
+      const result = await previewRaffleEligibility({
+        mode: cleanString(req.body && req.body.mode, 40) || 'all',
+        startAt: cleanString(req.body && req.body.startAt, 80),
+        endAt: cleanString(req.body && req.body.endAt, 80),
+        lastHours: req.body && req.body.lastHours,
+        winnerCount: req.body && req.body.winnerCount,
+        excludePreviousWinners: !(req.body && req.body.excludePreviousWinners === false),
+      });
+
+      res.json(result);
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post('/api/photobooth/manager/raffles', async (req, res, next) => {
   try {
     const user = await verifyFirebaseIdToken(req);
@@ -401,6 +423,7 @@ app.post('/api/photobooth/manager/raffles', async (req, res, next) => {
         lastHours: req.body && req.body.lastHours,
         winnerCount: req.body && req.body.winnerCount,
         excludePreviousWinners: !(req.body && req.body.excludePreviousWinners === false),
+        winnerMessage: cleanMultilineString(req.body && req.body.winnerMessage, 1200),
         requestedBy: user.email || user.uid,
       });
 
@@ -640,6 +663,41 @@ app.post('/api/photobooth/manager/profiles/:profileId/unlimited', async (req, re
       ok: true,
       profileId,
       unlimited,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/photobooth/manager/profiles/:profileId/raffle-excluded', async (req, res, next) => {
+  try {
+    const user = await verifyFirebaseIdToken(req);
+    const profileId = cleanString(req.params.profileId, 160);
+    const raffleExcluded = req.body && req.body.raffleExcluded === true;
+
+    if (!profileId) {
+      throw clientError('missing_profile_id', 'Informe o participante.');
+    }
+
+    const profileRef = getEventRef().collection('profiles').doc(profileId);
+    const profileSnap = await profileRef.get();
+
+    if (!profileSnap.exists) {
+      throw clientError('profile_not_found', 'Participante nao encontrado.', 404);
+    }
+
+    const now = Timestamp.now();
+    await profileRef.set({
+      raffleExcluded,
+      raffleExcludedUpdatedAt: now,
+      raffleExcludedUpdatedBy: user.email || user.uid,
+      updatedAt: now,
+    }, { merge: true });
+
+    res.json({
+      ok: true,
+      profileId,
+      raffleExcluded,
     });
   } catch (error) {
     next(error);
@@ -1265,6 +1323,15 @@ function getGenerationParamsFromRequest(req) {
 
 function cleanString(value, maxLength) {
   return String(value || '').trim().replace(/\s+/g, ' ').slice(0, maxLength);
+}
+
+function cleanMultilineString(value, maxLength) {
+  return String(value || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim()
+    .slice(0, maxLength);
 }
 
 if (require.main === module) {
